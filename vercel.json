@@ -1,0 +1,3 @@
+{
+  "rewrites": [{ "source": "/v1/messages", "destination": "/api/v1/messages" }]
+}

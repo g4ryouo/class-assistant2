@@ -163,6 +163,8 @@ const store = {
 let apiKey = store.get('ca:key', ''), proxyUrl = store.get('ca:proxy', ''), appToken = store.get('ca:token', '');
 /* Served by the local backend (http://127.0.0.1:8081/class): Claude is reached through it, so no browser key is needed. */
 const LOCAL = ['127.0.0.1', 'localhost'].includes(location.hostname) && location.port === '8081';
+/* Hosted on Vercel together with its relay (api/v1/messages.js): use it automatically. */
+if (!proxyUrl && /\.vercel\.app$/.test(location.hostname)) proxyUrl = location.origin;
 const canCall = () => LOCAL || !!proxyUrl || !!apiKey;
 let segs = [], history = [], summaryMd = '', image = null, fixCount = 0;
 const course = () => $('course').value.trim();

@@ -28,4 +28,13 @@
    - `ALLOWED_ORIGIN`（類型 Text）：`https://g4ryouo.github.io`
 4. 複製 Worker 網址（`https://xxx.workers.dev`），貼到網頁「連線設定」的「中繼站網址」，並填入 `APP_TOKEN` 的密碼。
 
+## 另一種中繼站：Vercel（網頁和中繼站放在同一個網址）
+
+1. 登入 [Vercel](https://vercel.com)，**Add New → Project**，匯入這個倉庫 `g4ryouo/class-assistant2`（Framework Preset 選 **Other**），先按 Deploy。
+2. 到專案 **Settings → Environment Variables**，新增：
+   - `ANTHROPIC_API_KEY`：你的 Claude API key
+   - `APP_TOKEN`：自己想一組密碼
+3. 到 **Deployments**，對最新一次部署選 **Redeploy**，讓變數生效。
+4. 打開 Vercel 給的網址（`https://xxx.vercel.app`）。在這個網址上使用時，網頁會自動使用同網址的中繼站，只需要在「連線設定」填入 `APP_TOKEN` 的密碼，中繼站網址不用填。
+
 若你的組織本來就允許瀏覽器直連，也可以不用中繼站，直接在「連線設定」填 API key。
