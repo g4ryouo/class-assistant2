@@ -193,7 +193,7 @@ async function claudeRaw(body) {
     method: 'POST', headers,
     body: JSON.stringify(body),
   });
-  if (!r.ok) { let m = ''; try { m = (await r.json()).error.message; } catch {} throw new Error(`Claude API ${r.status}${m ? '：' + m : ''}${/CORS/i.test(m) ? '\n→ 你的組織不允許瀏覽器直連，請改用「中繼站網址」（見連線設定）。' : ''}`); }
+  if (!r.ok) { let m = ''; const raw = await r.text(); try { m = JSON.parse(raw).error.message; } catch { m = raw.slice(0, 200); } throw new Error(`Claude API ${r.status}${m ? '：' + m : ''}${/CORS/i.test(m) ? '\n→ 你的組織不允許瀏覽器直連，請改用「中繼站網址」（見連線設定）。' : ''}`); }
   return r;
 }
 async function claude(system, messages, model, max) {

@@ -21,8 +21,8 @@ export default async function handler(request) {
   if (request.method !== 'POST') return new Response('Not found', { status: 404 });
   if (!allowed) return new Response('Forbidden', { status: 403 });
   const token = process.env.APP_TOKEN;
-  if (token && request.headers.get('x-app-token') !== token) return new Response('Unauthorized', { status: 401, headers: cors });
-  if (!process.env.ANTHROPIC_API_KEY) return new Response('ANTHROPIC_API_KEY is not set', { status: 500, headers: cors });
+  if (token && request.headers.get('x-app-token') !== token) return new Response(JSON.stringify({ error: { message: '存取密碼不正確（請檢查「連線設定」的密碼是否和 APP_TOKEN 一樣）' } }), { status: 401, headers: { ...cors, 'content-type': 'application/json' } });
+  if (!process.env.ANTHROPIC_API_KEY) return new Response(JSON.stringify({ error: { message: '中繼站尚未設定 ANTHROPIC_API_KEY（Vercel → Settings → Environment Variables，設定後要 Redeploy）' } }), { status: 500, headers: { ...cors, 'content-type': 'application/json' } });
   const upstream = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
