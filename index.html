@@ -43,6 +43,7 @@ aside.right { min-width: 0; min-height: 0; display: flex; flex-direction: column
 .seg { margin: 0 0 14px; max-width: 46em; }
 .seg.fixed { text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 5px; }
 .seg.interim { color: var(--ink-3); }
+.ts { display: inline-block; margin-right: 10px; color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; vertical-align: 3px; letter-spacing: .02em; }
 .empty { color: var(--ink-3); font-size: 15px; max-width: 34em; }
 .statusline { padding: 6px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); display: flex; gap: 14px; flex-wrap: wrap; }
 .tabs { display: flex; gap: 2px; padding: 8px 12px 0; border-bottom: 1px solid var(--line); }
@@ -86,7 +87,7 @@ dialog input[type=password], dialog input[type=text] { width: 100%; border: 1px 
   <span class="spacer"></span>
   <button class="btn" id="newBtn" type="button">新課堂</button>
   <button class="btn" id="expBtn" type="button">匯出 .md</button>
-  <button class="btn" id="keyBtn" type="button" hidden>設定 API key</button>
+  <button class="btn" id="keyBtn" type="button" hidden>連線設定</button>
   <button class="btn primary" id="rec" type="button"><span class="dot"></span><span id="recLabel">開始錄音</span></button>
 </header>
 
@@ -135,10 +136,15 @@ dialog input[type=password], dialog input[type=text] { width: 100%; border: 1px 
 </main>
 
 <dialog id="keyDlg">
-  <h2>Claude API key</h2>
-  <p class="hint">key 只存在這個瀏覽器（localStorage），只會傳送給 api.anthropic.com，不會傳到其他地方。共用的電腦請不要儲存。</p>
+  <h2>連線設定</h2>
+  <p class="hint"><b>建議：中繼站（Cloudflare Worker）。</b>Claude key 存在你的 Worker 裡，這個網頁只連中繼站，所以不受組織的 CORS 限制，也不用把 key 放進瀏覽器。部署步驟見倉庫的 README。</p>
+  <label class="hint" for="proxyIn">中繼站網址</label>
+  <input id="proxyIn" type="text" placeholder="https://xxx.workers.dev" autocomplete="off" spellcheck="false">
+  <label class="hint" for="tokenIn">存取密碼（Worker 的 APP_TOKEN，有設才填）</label>
+  <input id="tokenIn" type="password" autocomplete="off" spellcheck="false">
+  <p class="hint">或者（組織允許瀏覽器直連時）直接使用 API key；只存在這個瀏覽器，只傳給 api.anthropic.com。共用電腦請不要儲存。</p>
   <input id="keyIn" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
-  <div class="row"><button class="btn" id="keyClear" type="button">清除</button><span class="spacer"></span><button class="btn" id="keyCancel" type="button">取消</button><button class="btn primary" id="keySave" type="button">儲存</button></div>
+  <div class="row"><button class="btn" id="keyClear" type="button">全部清除</button><span class="spacer"></span><button class="btn" id="keyCancel" type="button">取消</button><button class="btn primary" id="keySave" type="button">儲存</button></div>
 </dialog>
 <div id="toast" role="status"></div>
 
@@ -154,10 +160,10 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
-let apiKey = store.get('ca:key', '');
+let apiKey = store.get('ca:key', ''), proxyUrl = store.get('ca:proxy', ''), appToken = store.get('ca:token', '');
 /* Served by the local backend (http://127.0.0.1:8081/class): Claude is reached through it, so no browser key is needed. */
 const LOCAL = ['127.0.0.1', 'localhost'].includes(location.hostname) && location.port === '8081';
-const canCall = () => LOCAL || !!apiKey;
+const canCall = () => LOCAL || !!proxyUrl || !!apiKey;
 let segs = [], history = [], summaryMd = '', image = null, fixCount = 0;
 const course = () => $('course').value.trim();
 const slidesText = () => (store.get('ca:slides:' + course(), null) || {}).text || '';
@@ -176,13 +182,16 @@ function systemBlocks(system) {
   return blocks;
 }
 async function claudeRaw(body) {
-  if (!canCall()) { $('keyDlg').showModal(); throw new Error('請先設定 Claude API key'); }
-  const r = await fetch(LOCAL ? '/v1/messages' : 'https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: LOCAL ? { 'content-type': 'application/json' } : { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+  if (!canCall()) { $('keyDlg').showModal(); throw new Error('請先到「連線設定」填入中繼站網址或 API key'); }
+  const url = LOCAL ? '/v1/messages' : proxyUrl ? proxyUrl.replace(/\/+$/, '') + '/v1/messages' : 'https://api.anthropic.com/v1/messages';
+  const headers = LOCAL ? { 'content-type': 'application/json' }
+    : proxyUrl ? { 'content-type': 'application/json', ...(appToken ? { 'x-app-token': appToken } : {}) }
+    : { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
+  const r = await fetch(url, {
+    method: 'POST', headers,
     body: JSON.stringify(body),
   });
-  if (!r.ok) { let m = ''; try { m = (await r.json()).error.message; } catch {} throw new Error(`Claude API ${r.status}${m ? '：' + m : ''}`); }
+  if (!r.ok) { let m = ''; try { m = (await r.json()).error.message; } catch {} throw new Error(`Claude API ${r.status}${m ? '：' + m : ''}${/CORS/i.test(m) ? '\n→ 你的組織不允許瀏覽器直連，請改用「中繼站網址」（見連線設定）。' : ''}`); }
   return r;
 }
 async function claude(system, messages, model, max) {
@@ -208,7 +217,11 @@ function jsonObject(text) { const m = text.match(/\{[\s\S]*\}/); try { return m 
 
 /* ───────── Live transcript (Chrome's built-in speech recognition) ───────── */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, recording = false, restartTimer = 0, interimText = '';
+let rec = null, recording = false, restartTimer = 0, interimText = '', interimAt = 0;
+const pad2 = n => String(n).padStart(2, '0');
+const fmtTime = ms => { const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
+const stamp = s => (s.at ? `[${fmtTime(s.at)}] ` : '') + s.text;
+function timeSpan(ms) { const t = document.createElement('span'); t.className = 'ts'; t.textContent = fmtTime(ms); return t; }
 function renderTx() {
   const box = $('tx'), nearEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 140;
   box.textContent = '';
@@ -218,10 +231,11 @@ function renderTx() {
     box.appendChild(d); return;
   }
   segs.forEach(s => {
-    const p = document.createElement('p'); p.className = 'seg' + (s.fixed ? ' fixed' : ''); p.textContent = s.text;
+    const p = document.createElement('p'); p.className = 'seg' + (s.fixed ? ' fixed' : '');
+    if (s.at) p.appendChild(timeSpan(s.at)); p.appendChild(document.createTextNode(s.text));
     if (s.fixed) p.title = '原文：' + s.orig; box.appendChild(p);
   });
-  if (interimText) { const p = document.createElement('p'); p.className = 'seg interim'; p.textContent = interimText; box.appendChild(p); }
+  if (interimText) { const p = document.createElement('p'); p.className = 'seg interim'; p.appendChild(timeSpan(interimAt || Date.now())); p.appendChild(document.createTextNode(interimText)); box.appendChild(p); }
   if (nearEnd || recording) box.scrollTop = box.scrollHeight;
 }
 function setRecUI() {
@@ -237,7 +251,8 @@ function startRec() {
       const r = e.results[i], t = r[0].transcript.trim();
       if (r.isFinal) { if (t) addSeg(t); } else interim += t + ' ';
     }
-    interimText = interim.trim(); renderTx();
+    const next = interim.trim(); if (next && !interimText) interimAt = Date.now();
+    interimText = next; renderTx();
   };
   rec.onerror = e => {
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { recording = false; setRecUI(); toast('麥克風權限被拒絕：請在網址列左側允許麥克風後再試一次', 6000); }
@@ -254,7 +269,7 @@ function stopRec() { recording = false; clearTimeout(restartTimer); try { rec &&
 /* ───────── Slide-aware correction ───────── */
 let queue = new Set(), flushTimer = 0, flushing = false;
 function addSeg(text) {
-  segs.push({ text, orig: text, fixed: false, checked: false });
+  segs.push({ text, orig: text, fixed: false, checked: false, at: Date.now() });
   queue.add(segs.length - 1); saveSoon(); renderTx();
   if (queue.size >= 3) flush(); else if (!flushTimer) flushTimer = setTimeout(flush, 6000);
 }
@@ -343,7 +358,7 @@ function fileToImage(file) {
 }
 async function setImage(f) { try { image = await fileToImage(f); $('thumbImg').src = image.preview; $('thumb').classList.add('on'); } catch (e) { toast(e.message); } }
 function clearImage() { image = null; $('thumb').classList.remove('on'); }
-const liveTranscript = () => segs.map(s => s.text).concat(interimText ? [interimText] : []).join('\n');
+const liveTranscript = () => segs.map(stamp).concat(interimText ? [interimText] : []).join('\n');
 
 async function ask() {
   const q = $('q').value.trim(); if (!q && !image) return;
@@ -375,7 +390,7 @@ function md(src) {
   if (list) out.push('</ul>'); return out.join('');
 }
 async function summarize() {
-  const text = segs.map(s => s.text).join('\n');
+  const text = segs.map(stamp).join('\n');
   if (text.split(/\s+/).length < 20) { toast('逐字稿太短，還不能總結'); return; }
   $('sumBtn').disabled = true; $('sumBody').innerHTML = '<div class="hint">整理中…</div>';
   const qa = history.slice(-40).map(h => `${h.role === 'user' ? 'Student' : 'Assistant'}: ${h.content.slice(0, 2000)}`).join('\n\n');
@@ -392,7 +407,7 @@ function exportMd() {
   if (!segs.length && !summaryMd) { toast('還沒有內容可以匯出'); return; }
   const title = course() || '課堂記錄', parts = [`# ${title}`];
   if (summaryMd) parts.push('## 課堂總結\n\n' + summaryMd);
-  parts.push('## 逐字稿\n\n' + segs.map(s => s.text).join('\n\n'));
+  parts.push('## 逐字稿\n\n' + segs.map(stamp).join('\n\n'));
   if (history.length) parts.push('## 課堂問答\n\n' + history.map(h => (h.role === 'user' ? '**我：** ' : '**助理：** ') + h.content).join('\n\n'));
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([parts.join('\n\n') + '\n'], { type: 'text/markdown;charset=utf-8' }));
@@ -432,10 +447,15 @@ document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
   if (b.dataset.tab === 'slides') slideStatus();
 });
 $('course').addEventListener('input', () => { slideStatus(); saveSoon(); });
-$('keyBtn').onclick = () => { $('keyIn').value = ''; $('keyIn').placeholder = apiKey ? '已設定（輸入新的以覆蓋）' : 'sk-ant-...'; $('keyDlg').showModal(); };
+$('keyBtn').onclick = () => { $('proxyIn').value = proxyUrl; $('tokenIn').value = appToken; $('keyIn').value = ''; $('keyIn').placeholder = apiKey ? '已設定（輸入新的以覆蓋）' : 'sk-ant-...'; $('keyDlg').showModal(); };
 $('keyCancel').onclick = () => $('keyDlg').close();
-$('keyClear').onclick = () => { apiKey = ''; store.del('ca:key'); $('keyDlg').close(); toast('已清除 API key'); };
-$('keySave').onclick = () => { const v = $('keyIn').value.trim(); if (v) { apiKey = v; store.set('ca:key', v); toast('API key 已儲存'); } $('keyDlg').close(); };
+$('keyClear').onclick = () => { apiKey = proxyUrl = appToken = ''; ['ca:key', 'ca:proxy', 'ca:token'].forEach(store.del); $('keyDlg').close(); toast('已清除連線設定'); };
+$('keySave').onclick = () => {
+  proxyUrl = $('proxyIn').value.trim(); appToken = $('tokenIn').value.trim(); const v = $('keyIn').value.trim(); if (v) apiKey = v;
+  if (proxyUrl && !/^https:\/\//.test(proxyUrl)) { toast('中繼站網址要以 https:// 開頭', 5000); proxyUrl = ''; return; }
+  store.set('ca:proxy', proxyUrl); store.set('ca:token', appToken); if (apiKey) store.set('ca:key', apiKey);
+  $('keyDlg').close(); toast('連線設定已儲存');
+};
 document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('q').focus(); } });
 window.addEventListener('beforeunload', e => { if (recording) { e.preventDefault(); e.returnValue = ''; } });
 
