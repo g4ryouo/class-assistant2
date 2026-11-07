@@ -86,7 +86,7 @@ dialog input[type=password], dialog input[type=text] { width: 100%; border: 1px 
   <span class="spacer"></span>
   <button class="btn" id="newBtn" type="button">新課堂</button>
   <button class="btn" id="expBtn" type="button">匯出 .md</button>
-  <button class="btn" id="keyBtn" type="button">設定 API key</button>
+  <button class="btn" id="keyBtn" type="button" hidden>設定 API key</button>
   <button class="btn primary" id="rec" type="button"><span class="dot"></span><span id="recLabel">開始錄音</span></button>
 </header>
 
@@ -155,6 +155,9 @@ const store = {
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
 let apiKey = store.get('ca:key', '');
+/* Served by the local backend (http://127.0.0.1:8081/class): Claude is reached through it, so no browser key is needed. */
+const LOCAL = ['127.0.0.1', 'localhost'].includes(location.hostname) && location.port === '8081';
+const canCall = () => LOCAL || !!apiKey;
 let segs = [], history = [], summaryMd = '', image = null, fixCount = 0;
 const course = () => $('course').value.trim();
 const slidesText = () => (store.get('ca:slides:' + course(), null) || {}).text || '';
@@ -173,10 +176,10 @@ function systemBlocks(system) {
   return blocks;
 }
 async function claudeRaw(body) {
-  if (!apiKey) { $('keyDlg').showModal(); throw new Error('請先設定 Claude API key'); }
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
+  if (!canCall()) { $('keyDlg').showModal(); throw new Error('請先設定 Claude API key'); }
+  const r = await fetch(LOCAL ? '/v1/messages' : 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    headers: LOCAL ? { 'content-type': 'application/json' } : { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
     body: JSON.stringify(body),
   });
   if (!r.ok) { let m = ''; try { m = (await r.json()).error.message; } catch {} throw new Error(`Claude API ${r.status}${m ? '：' + m : ''}`); }
@@ -257,7 +260,7 @@ function addSeg(text) {
 }
 async function flush(force) {
   clearTimeout(flushTimer); flushTimer = 0;
-  if (flushing || !queue.size || !apiKey) return;
+  if (flushing || !queue.size || !canCall()) return;
   flushing = true;
   const ids = [...queue].sort((a, b) => a - b); queue.clear();
   const sent = {}; ids.forEach(i => { if (segs[i]) sent[i] = segs[i].text; });
@@ -436,8 +439,9 @@ $('keySave').onclick = () => { const v = $('keyIn').value.trim(); if (v) { apiKe
 document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('q').focus(); } });
 window.addEventListener('beforeunload', e => { if (recording) { e.preventDefault(); e.returnValue = ''; } });
 
+if (!LOCAL) $('keyBtn').hidden = false;
 restore(); slideStatus(); renderTx(); setRecUI();
-if (!apiKey) setTimeout(() => $('keyDlg').showModal(), 400);
+if (!canCall()) setTimeout(() => $('keyDlg').showModal(), 400);
 </script>
 </body>
 </html>
