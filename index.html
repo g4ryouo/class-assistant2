@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>課堂助理</title>
+<style>
+/* Layout: header bar on top; live transcript on the left, Ask / Slides / Summary panel on the right. */
+:root {
+  --bg: #f6f5f1; --surface: #ffffff; --surface-2: #efede7; --ink: #1d1d1b; --ink-2: #4a4944; --ink-3: #7b7a73;
+  --line: #dcdad2; --accent: #b4532a; --accent-ink: #ffffff; --accent-soft: #f3e1d6; --ok: #3f7d4e; --bad: #b3372a; --bad-soft: #f7dfdb;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #1c1c1a; --surface: #262624; --surface-2: #30302d; --ink: #f2f1ec; --ink-2: #cfcdc4; --ink-3: #98968d;
+  --line: #3b3b37; --accent: #e0805a; --accent-ink: #1c1c1a; --accent-soft: #3a2c25; --ok: #7fb58c; --bad: #e58a7d; --bad-soft: #3d2623; color-scheme: dark; } }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.6 var(--font); display: flex; flex-direction: column; }
+button, input, select, textarea { font: inherit; color: inherit; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+h1 { font-size: 15px; margin: 0 6px 0 0; font-weight: 650; }
+.field { display: flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: 12px; }
+.field input, .field select { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 6px 9px; color: var(--ink); }
+#course { width: 220px; }
+.btn { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 6px 14px; cursor: pointer; font-weight: 600; font-size: 13px; color: var(--ink-2); }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn:disabled { opacity: .5; cursor: wait; }
+.btn:focus-visible, .tab:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#rec { display: inline-flex; align-items: center; gap: 8px; padding: 7px 18px; }
+#rec .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+#rec.live { background: var(--bad); border-color: var(--bad); color: #fff; }
+#rec.live .dot { animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { #rec.live .dot { animation: none; } }
+.spacer { flex: 1; }
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 430px; }
+section.left { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+aside.right { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--surface); }
+#tx { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 28px 40px; font-size: 19px; line-height: 1.65; }
+.seg { margin: 0 0 14px; max-width: 46em; }
+.seg.fixed { text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 5px; }
+.seg.interim { color: var(--ink-3); }
+.empty { color: var(--ink-3); font-size: 15px; max-width: 34em; }
+.statusline { padding: 6px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); display: flex; gap: 14px; flex-wrap: wrap; }
+.tabs { display: flex; gap: 2px; padding: 8px 12px 0; border-bottom: 1px solid var(--line); }
+.tab { border: 0; background: none; padding: 8px 12px; cursor: pointer; color: var(--ink-3); font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.pane { display: none; flex: 1; min-height: 0; flex-direction: column; }
+.pane.on { display: flex; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.hint { color: var(--ink-3); font-size: 12.5px; line-height: 1.65; }
+.msg { padding: 9px 12px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
+.msg.user { align-self: flex-end; max-width: 88%; background: var(--accent-soft); }
+.msg.bot { background: var(--surface-2); }
+.msg.err { background: var(--bad-soft); color: var(--bad); }
+.msg img { display: block; max-width: 100%; max-height: 150px; border-radius: 8px; margin-bottom: 6px; }
+.composer { border-top: 1px solid var(--line); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.composer textarea { width: 100%; resize: none; min-height: 46px; max-height: 140px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); padding: 9px 11px; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.thumb { display: none; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); }
+.thumb.on { display: flex; }
+.thumb img { height: 38px; border-radius: 6px; }
+.card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--bg); display: flex; flex-direction: column; gap: 8px; }
+.card textarea { width: 100%; min-height: 90px; resize: vertical; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 8px 10px; }
+.sum { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; line-height: 1.7; }
+.sum h2 { font-size: 14.5px; margin: 16px 0 6px; } .sum h2:first-child { margin-top: 0; }
+.sum ul { margin: 4px 0 8px; padding-left: 20px; } .sum p { margin: 4px 0; }
+.bar { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); padding: 20px; max-width: 460px; width: calc(100% - 32px); }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+dialog h2 { margin: 0 0 8px; font-size: 16px; }
+dialog input[type=password], dialog input[type=text] { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 8px 10px; margin: 6px 0 10px; }
+#toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 999px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 90vw; z-index: 50; }
+#toast.on { opacity: 1; }
+@media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr 1fr; } aside.right { border-left: 0; border-top: 1px solid var(--line); } #course { width: 150px; } #tx { padding: 14px 16px; font-size: 17px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>✻ 課堂助理</h1>
+  <label class="field">課程 <input id="course" type="text" placeholder="本堂課名稱，例如 English B1 Unit 5" autocomplete="off"></label>
+  <label class="field">口音 <select id="lang"><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option><option value="en-AU">English (AU)</option><option value="en-IN">English (IN)</option></select></label>
+  <span class="spacer"></span>
+  <button class="btn" id="newBtn" type="button">新課堂</button>
+  <button class="btn" id="expBtn" type="button">匯出 .md</button>
+  <button class="btn" id="keyBtn" type="button">設定 API key</button>
+  <button class="btn primary" id="rec" type="button"><span class="dot"></span><span id="recLabel">開始錄音</span></button>
+</header>
+
+<main>
+  <section class="left">
+    <div id="tx" aria-live="polite"></div>
+    <div class="statusline"><span id="stRec">未錄音</span><span id="stSlides">尚未載入投影片</span><span id="stFix">修正 0 處</span></div>
+  </section>
+
+  <aside class="right">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="ask" aria-selected="true" type="button">問答</button>
+      <button class="tab" role="tab" data-tab="slides" aria-selected="false" type="button">投影片</button>
+      <button class="tab" role="tab" data-tab="sum" aria-selected="false" type="button">課堂總結</button>
+    </div>
+
+    <div class="pane on" id="pane-ask">
+      <div class="scroll" id="chat"><div class="hint">上課中隨時打字提問，也可以貼上截圖（⌘V）、拖曳或選擇照片：老師的題目、板書、投影片都可以。我會參考投影片和目前為止的逐字稿回答。Enter 送出，Shift+Enter 換行。</div></div>
+      <div class="composer">
+        <div class="thumb" id="thumb"><img id="thumbImg" alt=""><span>已附上照片</span><button class="btn" id="thumbX" type="button">移除</button></div>
+        <textarea id="q" rows="2" placeholder="例如：老師剛剛問什麼？我可以怎麼回答？"></textarea>
+        <div class="row"><button class="btn" id="imgBtn" type="button">📷 照片</button><input type="file" id="imgFile" accept="image/*" hidden><span class="spacer"></span><button class="btn primary" id="send" type="button">送出</button></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-slides">
+      <div class="scroll">
+        <div class="card">
+          <div><b>課程：</b><span id="slCourse">（請先在上方輸入課程名稱）</span></div>
+          <div id="slState" class="hint">尚未載入投影片。</div>
+          <div class="row"><button class="btn primary" id="slBtn" type="button">上傳 slide（PDF）</button><button class="btn" id="slClear" type="button">清除</button></div>
+          <input type="file" id="slFile" accept=".pdf,.txt,.md" hidden>
+          <div class="hint">老師給的是 PPT？可以先另存成 PDF，或把文字貼在下面。</div>
+          <textarea id="slText" placeholder="或把投影片文字貼在這裡"></textarea>
+          <div class="row"><button class="btn" id="slUse" type="button">使用這段文字</button></div>
+        </div>
+        <div class="hint">流程：輸入課程名稱 → 上傳 slide → 按「開始錄音」。<br>每隔幾句，Claude 會對照 slide 修正辨識錯的字（有虛線底線，滑鼠移上去看原文）；問答和總結也都會參考 slide。換一堂課就換課程名稱，各堂課的 slide 分開儲存在這個瀏覽器。</div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-sum">
+      <div class="sum" id="sumBody"><div class="hint">下課後按「產生總結」，會依據 slide、完整逐字稿，以及你課堂上問過的問題，整理出課堂總結。</div></div>
+      <div class="bar"><button class="btn primary" id="sumBtn" type="button">產生總結</button><button class="btn" id="sumCopy" type="button">複製</button></div>
+    </div>
+  </aside>
+</main>
+
+<dialog id="keyDlg">
+  <h2>Claude API key</h2>
+  <p class="hint">key 只存在這個瀏覽器（localStorage），只會傳送給 api.anthropic.com，不會傳到其他地方。共用的電腦請不要儲存。</p>
+  <input id="keyIn" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+  <div class="row"><button class="btn" id="keyClear" type="button">清除</button><span class="spacer"></span><button class="btn" id="keyCancel" type="button">取消</button><button class="btn primary" id="keySave" type="button">儲存</button></div>
+</dialog>
+<div id="toast" role="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const MODEL_FAST = 'claude-haiku-5-5', MODEL_MAIN = 'claude-sonnet-5-5';
+const PDF_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const SLIDE_MAX = 60000;
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+let apiKey = store.get('ca:key', '');
+let segs = [], history = [], summaryMd = '', image = null, fixCount = 0;
+const course = () => $('course').value.trim();
+const slidesText = () => (store.get('ca:slides:' + course(), null) || {}).text || '';
+
+function toast(msg, ms = 3200) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), ms); }
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/* ───────── Claude (called straight from the browser with the viewer's own key) ───────── */
+const CORRECT_PROMPT = "You fix speech-recognition errors in a live transcript of an English-language class (the students are learning English, so the teacher may speak slowly, repeat words, or spell things out).\nYou are given the teacher's slides, the lesson topic, a few earlier lines for context, and new lines to check.\nRules:\n- Only change a word or phrase when it is very likely a recognition error, e.g. a homophone or a mangled term that the slides or the lesson topic clearly show was something else (names, vocabulary items, grammar terms, example sentences copied from the slides).\n- Never paraphrase, summarize, translate, add words the teacher did not say, or fix the teacher's own grammar/pronunciation mistakes; this is a verbatim transcript.\n- Keep punctuation and capitalization natural, but do not restructure sentences.\n- If a line is fine, leave it out of the answer.\nReply with JSON only: {\"fixes\": [{\"id\": <number>, \"text\": \"<the whole corrected line>\"}]}";
+const ASK_PROMPT = "You are the student's in-class assistant during a live, in-person English-language class. You can see the lesson topic, the teacher's slides, the live transcript so far (it may contain recognition errors; the slides are more reliable), and sometimes a photo the student took (the board, a slide, a worksheet, a question the teacher just asked).\nBe quick and practical: the student is reading this while the class goes on. Lead with the answer in 1-4 short sentences, then add detail only if useful. If the teacher just asked a question, suggest a good answer the student could say out loud, in simple natural English, and explain briefly why. Reply in the language the student wrote in (Traditional Chinese if they wrote Chinese), but keep English examples, vocabulary and sentences in English. Do not invent what the teacher said; if the transcript does not show it, say so.";
+const SUMMARY_PROMPT = "Write a class summary for a student who just attended a live English-language class. Use the lesson topic, the teacher's slides and the full transcript (it may contain recognition errors; trust the slides). Also use the questions the student asked during class and the answers they got.\nWrite in Traditional Chinese, keeping English vocabulary, phrases and example sentences in English. Use these Markdown sections, skipping any that have nothing in them:\n## 本堂主題\n## 重點整理\n## 新單字與片語（附意思與例句）\n## 文法與句型\n## 老師的提問與建議回答\n## 我在課堂上的提問\n## 課後練習與待辦\nOnly include what the class actually covered; do not pad.";
+
+function systemBlocks(system) {
+  const blocks = [{ type: 'text', text: system }], s = slidesText();
+  if (s) blocks.push({ type: 'text', text: "Teacher's slides (extracted text):\n" + s.slice(0, SLIDE_MAX), cache_control: { type: 'ephemeral' } });
+  return blocks;
+}
+async function claudeRaw(body) {
+  if (!apiKey) { $('keyDlg').showModal(); throw new Error('請先設定 Claude API key'); }
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) { let m = ''; try { m = (await r.json()).error.message; } catch {} throw new Error(`Claude API ${r.status}${m ? '：' + m : ''}`); }
+  return r;
+}
+async function claude(system, messages, model, max) {
+  const j = await (await claudeRaw({ model, max_tokens: max, system: systemBlocks(system), messages })).json();
+  return (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+}
+async function claudeStream(system, messages, model, max, onText) {
+  const r = await claudeRaw({ model, max_tokens: max, system: systemBlocks(system), messages, stream: true });
+  const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '', text = '';
+  for (;;) {
+    const { done, value } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line.startsWith('data:')) continue;
+      try { const ev = JSON.parse(line.slice(5)); if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') { text += ev.delta.text; onText(text); } } catch {}
+    }
+  }
+  return text.trim();
+}
+function jsonObject(text) { const m = text.match(/\{[\s\S]*\}/); try { return m ? JSON.parse(m[0]) : {}; } catch { return {}; } }
+
+/* ───────── Live transcript (Chrome's built-in speech recognition) ───────── */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recording = false, restartTimer = 0, interimText = '';
+function renderTx() {
+  const box = $('tx'), nearEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 140;
+  box.textContent = '';
+  if (!segs.length && !interimText) {
+    const d = document.createElement('div'); d.className = 'empty';
+    d.textContent = SR ? '輸入課程名稱、上傳 slide，然後按右上角「開始錄音」。老師說的話會即時顯示在這裡。' : '這個瀏覽器不支援即時語音辨識，請改用 Chrome（Mac 或 Windows 桌面版）。';
+    box.appendChild(d); return;
+  }
+  segs.forEach(s => {
+    const p = document.createElement('p'); p.className = 'seg' + (s.fixed ? ' fixed' : ''); p.textContent = s.text;
+    if (s.fixed) p.title = '原文：' + s.orig; box.appendChild(p);
+  });
+  if (interimText) { const p = document.createElement('p'); p.className = 'seg interim'; p.textContent = interimText; box.appendChild(p); }
+  if (nearEnd || recording) box.scrollTop = box.scrollHeight;
+}
+function setRecUI() {
+  $('rec').classList.toggle('live', recording); $('recLabel').textContent = recording ? '停止錄音' : '開始錄音';
+  $('stRec').textContent = recording ? '● 錄音中' : '未錄音';
+}
+function startRec() {
+  if (!SR) { toast('這個瀏覽器不支援語音辨識，請使用 Chrome'); return; }
+  rec = new SR(); rec.continuous = true; rec.interimResults = true; rec.lang = $('lang').value; rec.maxAlternatives = 1;
+  rec.onresult = e => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i], t = r[0].transcript.trim();
+      if (r.isFinal) { if (t) addSeg(t); } else interim += t + ' ';
+    }
+    interimText = interim.trim(); renderTx();
+  };
+  rec.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { recording = false; setRecUI(); toast('麥克風權限被拒絕：請在網址列左側允許麥克風後再試一次', 6000); }
+    else if (e.error === 'audio-capture') { recording = false; setRecUI(); toast('找不到麥克風', 5000); }
+    else if (e.error !== 'no-speech' && e.error !== 'aborted') toast('語音辨識錯誤：' + e.error);
+  };
+  /* Chrome ends a session after a long silence or about a minute; keep going while recording. */
+  rec.onend = () => { interimText = ''; renderTx(); if (recording) { clearTimeout(restartTimer); restartTimer = setTimeout(() => { try { rec.start(); } catch {} }, 250); } };
+  recording = true; try { rec.start(); } catch {} setRecUI();
+  if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {});
+}
+function stopRec() { recording = false; clearTimeout(restartTimer); try { rec && rec.stop(); } catch {} setRecUI(); flush(true); }
+
+/* ───────── Slide-aware correction ───────── */
+let queue = new Set(), flushTimer = 0, flushing = false;
+function addSeg(text) {
+  segs.push({ text, orig: text, fixed: false, checked: false });
+  queue.add(segs.length - 1); saveSoon(); renderTx();
+  if (queue.size >= 3) flush(); else if (!flushTimer) flushTimer = setTimeout(flush, 6000);
+}
+async function flush(force) {
+  clearTimeout(flushTimer); flushTimer = 0;
+  if (flushing || !queue.size || !apiKey) return;
+  flushing = true;
+  const ids = [...queue].sort((a, b) => a - b); queue.clear();
+  const sent = {}; ids.forEach(i => { if (segs[i]) sent[i] = segs[i].text; });
+  const before = segs.slice(Math.max(0, ids[0] - 6), ids[0]).map(s => s.text);
+  const prompt = `Lesson topic: ${course() || '(not given)'}\n\nEarlier lines (context only, do not return them):\n${before.join('\n')}\n\nLines to check:\n${JSON.stringify(Object.entries(sent).map(([id, text]) => ({ id: +id, text })))}`;
+  try {
+    const out = jsonObject(await claude(CORRECT_PROMPT, [{ role: 'user', content: prompt }], MODEL_FAST, 1500));
+    for (const fx of out.fixes || []) {
+      const s = segs[fx.id], t = String(fx.text || '').trim();
+      /* a "fix" that rewrites the line instead of repairing words is dropped */
+      if (s && s.text === sent[fx.id] && t && t !== s.text && Math.abs(t.length - s.text.length) <= Math.max(20, s.text.length / 2)) { s.text = t; s.fixed = true; fixCount++; }
+    }
+    Object.keys(sent).forEach(i => { if (segs[i]) segs[i].checked = true; });
+    $('stFix').textContent = `修正 ${fixCount} 處`; renderTx(); saveSoon();
+  } catch (e) { console.warn('correction failed', e); if (/401|403/.test(e.message)) toast(e.message, 6000); }
+  flushing = false;
+  if (queue.size) flushTimer = setTimeout(flush, 2000);
+}
+
+/* ───────── Slides ───────── */
+let pdfReady = null;
+function loadPdf() {
+  if (pdfReady) return pdfReady;
+  pdfReady = (async () => {
+    if (!window.pdfjsLib) throw new Error('PDF 解析程式載入失敗，請確認有連上網路');
+    const code = await (await fetch(PDF_WORKER)).text();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+  })();
+  pdfReady.catch(() => { pdfReady = null; });
+  return pdfReady;
+}
+async function pdfText(file) {
+  await loadPdf();
+  const doc = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise, pages = [];
+  for (let n = 1; n <= Math.min(doc.numPages, 400); n++) {
+    const tc = await (await doc.getPage(n)).getTextContent();
+    pages.push(`--- slide ${n} ---\n` + tc.items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim());
+  }
+  return pages.join('\n\n');
+}
+function slideStatus() {
+  $('slCourse').textContent = course() || '（請先在上方輸入課程名稱）';
+  const s = store.get('ca:slides:' + course(), null);
+  const msg = s ? `✓ 已載入：${s.name}（${s.text.length.toLocaleString()} 字元）` : '尚未載入投影片。';
+  $('slState').textContent = msg; $('stSlides').textContent = s ? `投影片：${s.name}` : '尚未載入投影片';
+}
+function saveSlides(name, text) {
+  text = text.replace(/[ \t]+\n/g, '\n').trim();
+  if (text.split(/\s+/).length < 10) { toast('讀不到文字（掃描檔的投影片沒有文字層）', 6000); return; }
+  if (!course()) { toast('請先輸入本堂課程名稱', 4000); $('course').focus(); return; }
+  store.set('ca:slides:' + course(), { name, text: text.slice(0, SLIDE_MAX * 2) }); slideStatus(); toast('投影片已載入');
+}
+$('slBtn').onclick = () => { if (!course()) { toast('請先輸入本堂課程名稱', 4000); $('course').focus(); return; } $('slFile').click(); };
+$('slFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  $('slState').textContent = '讀取中…';
+  try { saveSlides(f.name, /\.pdf$/i.test(f.name) ? await pdfText(f) : await f.text()); } catch (err) { toast(err.message, 6000); slideStatus(); }
+};
+$('slUse').onclick = () => saveSlides('貼上的文字', $('slText').value);
+$('slClear').onclick = () => { store.del('ca:slides:' + course()); slideStatus(); };
+
+/* ───────── Ask ───────── */
+function bubble(kind, text, img) {
+  const box = $('chat'), d = document.createElement('div'); d.className = 'msg ' + kind;
+  if (img) { const im = document.createElement('img'); im.src = img; d.appendChild(im); }
+  d.appendChild(document.createTextNode(text)); box.appendChild(d); box.scrollTop = box.scrollHeight; return d;
+}
+function fileToImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), im = new Image();
+    im.onload = () => {
+      const k = Math.min(1, 1600 / Math.max(im.width, im.height)), c = document.createElement('canvas');
+      c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      const u = c.toDataURL('image/jpeg', 0.85); resolve({ media_type: 'image/jpeg', data: u.split(',')[1], preview: u });
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('無法讀取這張圖片')); };
+    im.src = url;
+  });
+}
+async function setImage(f) { try { image = await fileToImage(f); $('thumbImg').src = image.preview; $('thumb').classList.add('on'); } catch (e) { toast(e.message); } }
+function clearImage() { image = null; $('thumb').classList.remove('on'); }
+const liveTranscript = () => segs.map(s => s.text).concat(interimText ? [interimText] : []).join('\n');
+
+async function ask() {
+  const q = $('q').value.trim(); if (!q && !image) return;
+  const img = image; $('q').value = ''; clearImage();
+  bubble('user', q || '（照片）', img && img.preview);
+  const out = bubble('bot', '思考中…'); $('send').disabled = true;
+  const hist = history.slice(-8);
+  while (hist.length && hist[0].role !== 'user') hist.shift();
+  const content = [];
+  if (img) content.push({ type: 'image', source: { type: 'base64', media_type: img.media_type, data: img.data } });
+  content.push({ type: 'text', text: `Lesson topic: ${course() || '(not given)'}\n\nLive transcript so far (most recent part, may contain errors):\n${liveTranscript().slice(-24000) || '(nothing yet)'}\n\nStudent: ${q || '(photo only: what is this and what should I do?)'}` });
+  try {
+    const ans = await claudeStream(ASK_PROMPT, [...hist, { role: 'user', content }], MODEL_MAIN, 1500, t => { out.textContent = t; $('chat').scrollTop = $('chat').scrollHeight; });
+    out.textContent = ans || '（沒有回應）';
+    history.push({ role: 'user', content: (img ? '[附上一張照片] ' : '') + q }, { role: 'assistant', content: ans }); saveSoon();
+  } catch (e) { out.className = 'msg err'; out.textContent = e.message; }
+  $('send').disabled = false;
+}
+
+/* ───────── Summary ───────── */
+function md(src) {
+  const out = []; let list = false;
+  for (const raw of src.split('\n')) {
+    const line = esc(raw).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>'), li = line.match(/^\s*[-*•]\s+(.*)/);
+    if (li) { if (!list) { out.push('<ul>'); list = true; } out.push('<li>' + li[1] + '</li>'); continue; }
+    if (list) { out.push('</ul>'); list = false; }
+    const h = line.match(/^#{1,6}\s+(.*)/); if (h) out.push('<h2>' + h[1] + '</h2>'); else if (line.trim()) out.push('<p>' + line + '</p>');
+  }
+  if (list) out.push('</ul>'); return out.join('');
+}
+async function summarize() {
+  const text = segs.map(s => s.text).join('\n');
+  if (text.split(/\s+/).length < 20) { toast('逐字稿太短，還不能總結'); return; }
+  $('sumBtn').disabled = true; $('sumBody').innerHTML = '<div class="hint">整理中…</div>';
+  const qa = history.slice(-40).map(h => `${h.role === 'user' ? 'Student' : 'Assistant'}: ${h.content.slice(0, 2000)}`).join('\n\n');
+  const prompt = `Lesson topic: ${course() || '(not given)'}\n\nFull transcript:\n${text.slice(-120000)}\n\n` + (qa ? `Questions the student asked during class, with the answers they got:\n${qa}` : '');
+  try {
+    const out = await claudeStream(SUMMARY_PROMPT, [{ role: 'user', content: prompt }], MODEL_MAIN, 3500, t => { $('sumBody').innerHTML = md(t); });
+    summaryMd = out; $('sumBody').innerHTML = md(out); saveSoon();
+  } catch (e) { $('sumBody').innerHTML = '<div class="msg err">' + esc(e.message) + '</div>'; }
+  $('sumBtn').disabled = false;
+}
+
+/* ───────── Export · save · reset ───────── */
+function exportMd() {
+  if (!segs.length && !summaryMd) { toast('還沒有內容可以匯出'); return; }
+  const title = course() || '課堂記錄', parts = [`# ${title}`];
+  if (summaryMd) parts.push('## 課堂總結\n\n' + summaryMd);
+  parts.push('## 逐字稿\n\n' + segs.map(s => s.text).join('\n\n'));
+  if (history.length) parts.push('## 課堂問答\n\n' + history.map(h => (h.role === 'user' ? '**我：** ' : '**助理：** ') + h.content).join('\n\n'));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([parts.join('\n\n') + '\n'], { type: 'text/markdown;charset=utf-8' }));
+  a.download = title.replace(/[\\/:*?"<>|]+/g, '-') + '.md'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+let saveT = 0;
+function saveSoon() { clearTimeout(saveT); saveT = setTimeout(() => store.set('ca:session', { course: course(), lang: $('lang').value, segs, history, summaryMd, fixCount }), 800); }
+function restore() {
+  const s = store.get('ca:session', null); if (!s) return;
+  $('course').value = s.course || ''; if (s.lang) $('lang').value = s.lang;
+  segs = s.segs || []; history = s.history || []; summaryMd = s.summaryMd || ''; fixCount = s.fixCount || 0;
+  $('stFix').textContent = `修正 ${fixCount} 處`;
+  history.forEach(h => bubble(h.role === 'user' ? 'user' : 'bot', h.content));
+  if (summaryMd) $('sumBody').innerHTML = md(summaryMd);
+}
+function newClass() {
+  if (recording) stopRec();
+  if (segs.length && !confirmNew.armed) { confirmNew.armed = true; $('newBtn').textContent = '再按一次確認清除'; setTimeout(() => { confirmNew.armed = false; $('newBtn').textContent = '新課堂'; }, 4000); return; }
+  confirmNew.armed = false; $('newBtn').textContent = '新課堂';
+  segs = []; history = []; summaryMd = ''; fixCount = 0; queue.clear(); interimText = ''; clearImage(); store.del('ca:session');
+  $('chat').innerHTML = ''; $('sumBody').innerHTML = '<div class="hint">下課後按「產生總結」。</div>'; $('stFix').textContent = '修正 0 處'; renderTx();
+}
+const confirmNew = { armed: false };
+
+/* ───────── Wiring ───────── */
+$('rec').onclick = () => recording ? stopRec() : startRec();
+$('newBtn').onclick = newClass; $('expBtn').onclick = exportMd; $('send').onclick = ask; $('sumBtn').onclick = summarize;
+$('sumCopy').onclick = () => { if (summaryMd) navigator.clipboard.writeText(summaryMd).then(() => toast('已複製'), () => toast('無法複製')); };
+$('imgBtn').onclick = () => $('imgFile').click(); $('imgFile').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) setImage(f); }; $('thumbX').onclick = clearImage;
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(); } });
+$('q').addEventListener('paste', e => { const f = [...(e.clipboardData?.files || [])].find(x => x.type.startsWith('image/')); if (f) { e.preventDefault(); setImage(f); } });
+$('chat').addEventListener('dragover', e => e.preventDefault());
+$('chat').addEventListener('drop', e => { const f = [...e.dataTransfer.files].find(x => x.type.startsWith('image/')); if (f) { e.preventDefault(); setImage(f); } });
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', t === b));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + b.dataset.tab));
+  if (b.dataset.tab === 'slides') slideStatus();
+});
+$('course').addEventListener('input', () => { slideStatus(); saveSoon(); });
+$('keyBtn').onclick = () => { $('keyIn').value = ''; $('keyIn').placeholder = apiKey ? '已設定（輸入新的以覆蓋）' : 'sk-ant-...'; $('keyDlg').showModal(); };
+$('keyCancel').onclick = () => $('keyDlg').close();
+$('keyClear').onclick = () => { apiKey = ''; store.del('ca:key'); $('keyDlg').close(); toast('已清除 API key'); };
+$('keySave').onclick = () => { const v = $('keyIn').value.trim(); if (v) { apiKey = v; store.set('ca:key', v); toast('API key 已儲存'); } $('keyDlg').close(); };
+document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('q').focus(); } });
+window.addEventListener('beforeunload', e => { if (recording) { e.preventDefault(); e.returnValue = ''; } });
+
+restore(); slideStatus(); renderTx(); setRecUI();
+if (!apiKey) setTimeout(() => $('keyDlg').showModal(), 400);
+</script>
+</body>
+</html>
