@@ -165,6 +165,8 @@ let apiKey = store.get('ca:key', ''), proxyUrl = store.get('ca:proxy', ''), appT
 const LOCAL = ['127.0.0.1', 'localhost'].includes(location.hostname) && location.port === '8081';
 /* Hosted on Vercel together with its relay (api/v1/messages.js): use it automatically. */
 if (!proxyUrl && /\.vercel\.app$/.test(location.hostname)) proxyUrl = location.origin;
+/* Setup link: https://…/#t=PASSWORD saves the relay password in this browser and removes it from the address bar. */
+(() => { const m = location.hash.match(/[#&]t=([^&]+)/); if (!m) return; try { appToken = decodeURIComponent(m[1]); store.set('ca:token', appToken); window.history.replaceState(null, '', location.pathname + location.search); } catch {} })();
 const canCall = () => LOCAL || !!proxyUrl || !!apiKey;
 let segs = [], history = [], summaryMd = '', image = null, fixCount = 0;
 const course = () => $('course').value.trim();
