@@ -124,6 +124,7 @@ dialog input[type=password], dialog input[type=text] { width: 100%; border: 1px 
           <div><b>課程：</b><span id="slCourse">（請先在上方輸入課程名稱）</span></div>
           <div id="slState" class="hint">尚未載入投影片。</div>
           <div id="slList"></div>
+          <div id="slTerms" class="hint"></div>
           <div class="row"><button class="btn primary" id="slBtn" type="button">上傳 slide（可一次選多個）</button><button class="btn" id="slClear" type="button">全部清除</button></div>
           <input type="file" id="slFile" accept=".pdf,.txt,.md" multiple hidden>
           <div class="hint">同一堂課有好幾份投影片或講義，可以一次選多個檔案，或分次上傳；同名檔案會被取代。老師給的是 PPT？可以先另存成 PDF，或把文字貼在下面（每貼一次算一份）。</div>
@@ -179,6 +180,8 @@ const course = () => $('course').value.trim();
 /* A course can have several slide files, stored as [{name, text}] (the older single {name, text} still loads). */
 const slidesKey = () => 'ca:slides:' + course();
 const slideFiles = () => { const v = store.get(slidesKey(), null); return !v ? [] : Array.isArray(v) ? v : [v]; };
+const termsKey = () => 'ca:terms:' + course();
+const slideTerms = () => { const v = store.get(termsKey(), []); return Array.isArray(v) ? v : []; };
 function slidesText() {
   const files = slideFiles(); if (!files.length) return '';
   /* Share the prompt budget fairly: short files stay whole, long ones are cut to an equal share of what is left. */
@@ -186,14 +189,17 @@ function slidesText() {
   files.map((_, i) => i).sort((a, b) => files[a].text.length - files[b].text.length).forEach((i, k, all) => {
     cut[i] = Math.min(files[i].text.length, Math.floor(left / (all.length - k))); left -= cut[i];
   });
-  return files.map((f, i) => `=== File ${i + 1} of ${files.length}: ${f.name} ===\n` + f.text.slice(0, cut[i])).join('\n\n');
+  const terms = slideTerms();
+  return (terms.length ? `Key terms from the slides (use these exact spellings): ${terms.join('; ')}\n\n` : '')
+    + files.map((f, i) => `=== File ${i + 1} of ${files.length}: ${f.name} ===\n` + f.text.slice(0, cut[i])).join('\n\n');
 }
 
 function toast(msg, ms = 3200) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), ms); }
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /* ───────── Claude (called straight from the browser with the viewer's own key) ───────── */
-const CORRECT_PROMPT = "You fix speech-recognition errors in a live transcript of an English-language class (the students are learning English, so the teacher may speak slowly, repeat words, or spell things out).\nYou are given the teacher's slides, the lesson topic, a few earlier lines for context, and new lines to check.\nRules:\n- Only change a word or phrase when it is very likely a recognition error, e.g. a homophone or a mangled term that the slides or the lesson topic clearly show was something else (names, vocabulary items, grammar terms, example sentences copied from the slides).\n- Never paraphrase, summarize, translate, add words the teacher did not say, or fix the teacher's own grammar/pronunciation mistakes; this is a verbatim transcript.\n- Keep punctuation and capitalization natural, but do not restructure sentences.\n- If a line is fine, leave it out of the answer.\nReply with JSON only: {\"fixes\": [{\"id\": <number>, \"text\": \"<the whole corrected line>\"}]}";
+const CORRECT_PROMPT = "You turn raw speech-recognition output from a live class into clean, professional written English. The students are learning English. You are given the lesson topic, the teacher's slides and handouts, a list of key terms from them, a few earlier lines for context, and new lines to edit.\nEdit every line so it reads as clear, professional text:\n1. Terminology first. Wherever the recognizer wrote ordinary words that sound like a term, name, vocabulary item, grammar term, fixed phrase or example sentence from the slides or the key list, replace them with the exact wording and spelling used there. Use the slides to work out what the course is about and which words a teacher of this course would use.\n2. Remove spoken-language noise: filler words and sounds (um, uh, er, you know, I mean, filler uses of like, so, okay, right), stutters, accidental repetitions and abandoned false starts. Write gonna, wanna and gotta as going to, want to and have to. Keep ordinary contractions such as don't and it's.\n3. Fix other obvious recognition errors, punctuation and capitalization so each sentence reads cleanly.\nNever change the meaning, add anything the teacher did not say, summarize, translate, reorder ideas or make a line longer than it needs to be. When the teacher is demonstrating an example sentence (including a deliberately wrong or casual one), keep it as said unless it matches a slide sentence.\nIf a line is already clean, leave it out of the answer. If a line is only filler or noise with no content, return an empty string as its text.\nReply with JSON only: {\"fixes\": [{\"id\": <number>, \"text\": \"<the whole edited line>\"}]}";
+const TERM_PROMPT = "From the teacher's slides and handouts, list the key terms a speech recognizer is likely to mishear or write as ordinary words: technical or professional vocabulary, proper nouns, grammar terms, vocabulary items and fixed phrases from the lesson, with their exact spelling. 1-4 words each, no everyday words, no duplicates, at most 60, most important first. Reply with JSON only: {\"terms\": [\"...\"]}";
 const ASK_PROMPT = "You are the student's in-class assistant during a live, in-person English-language class. You can see the lesson topic, the teacher's slides, the live transcript so far (it may contain recognition errors; the slides are more reliable), and sometimes a photo the student took (the board, a slide, a worksheet, a question the teacher just asked).\nThe student reads this while the class goes on, so be brief: answer in 1-4 short sentences, normally under 100 words, and add more only if the student asks for detail. Answer exactly what was asked; do not recap the lesson, and do not point out transcript errors unless asked. If the teacher just asked a question, give one good answer the student can say out loud in simple natural English, plus a few words on why.\nFormat: plain text only. Never use Markdown symbols (no **, no #, no backticks, no tables). For a list, put each item on its own line starting with 1. 2. 3. or the character ・. Reply in the language the student wrote in (Traditional Chinese if they wrote Chinese), but keep English examples, vocabulary and sentences in English. Do not invent what the teacher said; if the transcript does not show it, say so.";
 const SUMMARY_PROMPT = "Write a class summary for a student who just attended a live English-language class. Use the lesson topic, the teacher's slides and the full transcript (it may contain recognition errors; trust the slides). Also use the questions the student asked during class and the answers they got.\nWrite in Traditional Chinese, keeping English vocabulary, phrases and example sentences in English. Use these Markdown sections, skipping any that have nothing in them:\n## 本堂主題\n## 重點整理\n## 新單字與片語（附意思與例句）\n## 文法與句型\n## 老師的提問與建議回答\n## 我在課堂上的提問\n## 課後練習與待辦\nOnly include what the class actually covered; do not pad.";
 
@@ -246,12 +252,12 @@ function timeSpan(ms) { const t = document.createElement('span'); t.className = 
 function renderTx() {
   const box = $('tx'), nearEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 140;
   box.textContent = '';
-  if (!segs.length && !interimText) {
+  if (!segs.some(s => s.text) && !interimText) {
     const d = document.createElement('div'); d.className = 'empty';
     d.textContent = SR ? '輸入課程名稱、上傳 slide，然後按右上角「開始錄音」。老師說的話會即時顯示在這裡。' : '這個瀏覽器不支援即時語音辨識，請改用 Chrome（Mac 或 Windows 桌面版）。';
     box.appendChild(d); return;
   }
-  segs.forEach(s => {
+  segs.filter(s => s.text).forEach(s => {
     const p = document.createElement('p'); p.className = 'seg' + (s.fixed ? ' fixed' : '');
     if (s.at) p.appendChild(timeSpan(s.at)); p.appendChild(document.createTextNode(s.text));
     if (s.fixed) p.title = '原文：' + s.orig; box.appendChild(p);
@@ -305,9 +311,9 @@ async function flush(force) {
   try {
     const out = jsonObject(await claude(CORRECT_PROMPT, [{ role: 'user', content: prompt }], MODEL_FAST, 1500));
     for (const fx of out.fixes || []) {
-      const s = segs[fx.id], t = String(fx.text || '').trim();
-      /* a "fix" that rewrites the line instead of repairing words is dropped */
-      if (s && s.text === sent[fx.id] && t && t !== s.text && Math.abs(t.length - s.text.length) <= Math.max(20, s.text.length / 2)) { s.text = t; s.fixed = true; fixCount++; }
+      const s = segs[fx.id], t = String(fx.text == null ? s && s.text : fx.text).trim();
+      /* Cleanups may shorten a line a lot (fillers) or empty it (noise only); a rewrite that grows it is dropped. */
+      if (s && s.text === sent[fx.id] && t !== s.text && t.length <= s.text.length * 1.3 + 15 && (t === '' || t.length >= s.text.length * 0.25)) { s.text = t; s.fixed = true; fixCount++; }
     }
     Object.keys(sent).forEach(i => { if (segs[i]) segs[i].checked = true; });
     $('stFix').textContent = `修正 ${fixCount} 處`; renderTx(); saveSoon();
@@ -344,6 +350,9 @@ function slideStatus() {
     ? `✓ 已載入 ${files.length} 個檔案（共 ${total.toLocaleString()} 字元）` + (total > SLIDE_MAX ? '。內容很多，每個檔案只會取前面的一部分給 Claude。' : '')
     : '尚未載入投影片。';
   $('stSlides').textContent = files.length ? `投影片：${files.length} 個檔案` : '尚未載入投影片';
+  const terms = slideTerms();
+  $('slTerms').textContent = !files.length ? '' : termsBusy ? '正在從投影片擷取專業詞彙…'
+    : terms.length ? `已自動擷取 ${terms.length} 個專業詞彙，逐字稿會依這些詞彙和投影片內容修正：${terms.join('、')}` : '';
   const list = $('slList'); list.textContent = '';
   files.forEach((f, i) => {
     const row = document.createElement('div'); row.className = 'slitem';
@@ -353,9 +362,22 @@ function slideStatus() {
     row.append(nm, sz, x); list.appendChild(row);
   });
 }
+let termsBusy = false;
+async function buildTerms() {
+  const key = termsKey();
+  if (!slideFiles().length || !canCall()) return;
+  termsBusy = true; slideStatus();
+  try {
+    store.del(key);   /* so the old list does not steer the new one */
+    const out = jsonObject(await claude(TERM_PROMPT, [{ role: 'user', content: 'List the key terms now.' }], MODEL_FAST, 900));
+    const terms = (out.terms || []).map(t => String(t).trim()).filter(t => t && t.length <= 60).slice(0, 60);
+    if (key === termsKey() && terms.length) store.set(key, terms); else if (terms.length) store.set(key, terms);
+  } catch (e) { console.warn('term extraction failed', e); }
+  termsBusy = false; slideStatus();
+}
 function removeSlide(i) {
   const files = slideFiles(); files.splice(i, 1);
-  if (files.length) store.set(slidesKey(), files); else store.del(slidesKey());
+  if (files.length) { store.set(slidesKey(), files); buildTerms(); } else { store.del(slidesKey()); store.del(termsKey()); }
   slideStatus();
 }
 /* Adds one file's text (a file with the same name is replaced). Returns '' on success, otherwise the reason. */
@@ -377,15 +399,16 @@ $('slFile').onchange = async e => {
   }
   slideStatus();
   if (bad.length) toast(bad.join('\n'), 7000); else toast(`已載入 ${ok} 個檔案`);
+  if (ok) buildTerms();
 };
 $('slUse').onclick = () => {
   if (!needCourse()) return;
   const n = slideFiles().filter(f => /^貼上的文字/.test(f.name)).length + 1;
   const why = saveSlides(`貼上的文字 ${n}`, $('slText').value);
-  if (why) toast(why, 5000); else { $('slText').value = ''; toast('已加入'); }
+  if (why) toast(why, 5000); else { $('slText').value = ''; toast('已加入'); buildTerms(); }
   slideStatus();
 };
-$('slClear').onclick = () => { store.del(slidesKey()); slideStatus(); };
+$('slClear').onclick = () => { store.del(slidesKey()); store.del(termsKey()); slideStatus(); };
 
 /* ───────── Ask ───────── */
 /* Chat bubbles: show any **bold**, `code`, # headings and - bullets as formatting instead of raw symbols. */
@@ -414,7 +437,7 @@ function fileToImage(file) {
 }
 async function setImage(f) { try { image = await fileToImage(f); $('thumbImg').src = image.preview; $('thumb').classList.add('on'); } catch (e) { toast(e.message); } }
 function clearImage() { image = null; $('thumb').classList.remove('on'); }
-const liveTranscript = () => segs.map(stamp).concat(interimText ? [interimText] : []).join('\n');
+const liveTranscript = () => segs.filter(s => s.text).map(stamp).concat(interimText ? [interimText] : []).join('\n');
 
 async function ask() {
   const q = $('q').value.trim(); if (!q && !image) return;
@@ -446,7 +469,7 @@ function md(src) {
   if (list) out.push('</ul>'); return out.join('');
 }
 async function summarize() {
-  const text = segs.map(stamp).join('\n');
+  const text = segs.filter(s => s.text).map(stamp).join('\n');
   if (text.split(/\s+/).length < 20) { toast('逐字稿太短，還不能總結'); return; }
   $('sumBtn').disabled = true; $('sumBody').innerHTML = '<div class="hint">整理中…</div>';
   const qa = history.slice(-40).map(h => `${h.role === 'user' ? 'Student' : 'Assistant'}: ${h.content.slice(0, 2000)}`).join('\n\n');
@@ -463,7 +486,7 @@ function exportMd() {
   if (!segs.length && !summaryMd) { toast('還沒有內容可以匯出'); return; }
   const title = course() || '課堂記錄', parts = [`# ${title}`];
   if (summaryMd) parts.push('## 課堂總結\n\n' + summaryMd);
-  parts.push('## 逐字稿\n\n' + segs.map(stamp).join('\n\n'));
+  parts.push('## 逐字稿\n\n' + segs.filter(s => s.text).map(stamp).join('\n\n'));
   if (history.length) parts.push('## 課堂問答\n\n' + history.map(h => (h.role === 'user' ? '**我：** ' : '**助理：** ') + h.content).join('\n\n'));
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([parts.join('\n\n') + '\n'], { type: 'text/markdown;charset=utf-8' }));
