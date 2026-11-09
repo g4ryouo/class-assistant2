@@ -70,6 +70,10 @@ aside.right { min-width: 0; min-height: 0; display: flex; flex-direction: column
 .sum h2 { font-size: 14.5px; margin: 16px 0 6px; } .sum h2:first-child { margin-top: 0; }
 .sum ul { margin: 4px 0 8px; padding-left: 20px; } .sum p { margin: 4px 0; }
 .bar { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+#slList { display: flex; flex-direction: column; gap: 6px; }
+.slitem { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px 6px 12px; background: var(--surface); }
+.slitem .nm { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.slitem .btn { padding: 3px 10px; font-size: 12px; }
 dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); padding: 20px; max-width: 460px; width: calc(100% - 32px); }
 dialog::backdrop { background: rgba(0,0,0,.45); }
 dialog h2 { margin: 0 0 8px; font-size: 16px; }
@@ -118,9 +122,10 @@ dialog input[type=password], dialog input[type=text] { width: 100%; border: 1px 
         <div class="card">
           <div><b>課程：</b><span id="slCourse">（請先在上方輸入課程名稱）</span></div>
           <div id="slState" class="hint">尚未載入投影片。</div>
-          <div class="row"><button class="btn primary" id="slBtn" type="button">上傳 slide（PDF）</button><button class="btn" id="slClear" type="button">清除</button></div>
-          <input type="file" id="slFile" accept=".pdf,.txt,.md" hidden>
-          <div class="hint">老師給的是 PPT？可以先另存成 PDF，或把文字貼在下面。</div>
+          <div id="slList"></div>
+          <div class="row"><button class="btn primary" id="slBtn" type="button">上傳 slide（可一次選多個）</button><button class="btn" id="slClear" type="button">全部清除</button></div>
+          <input type="file" id="slFile" accept=".pdf,.txt,.md" multiple hidden>
+          <div class="hint">同一堂課有好幾份投影片或講義，可以一次選多個檔案，或分次上傳；同名檔案會被取代。老師給的是 PPT？可以先另存成 PDF，或把文字貼在下面（每貼一次算一份）。</div>
           <textarea id="slText" placeholder="或把投影片文字貼在這裡"></textarea>
           <div class="row"><button class="btn" id="slUse" type="button">使用這段文字</button></div>
         </div>
@@ -157,7 +162,7 @@ const SLIDE_MAX = 60000;
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
 let apiKey = store.get('ca:key', ''), proxyUrl = store.get('ca:proxy', ''), appToken = store.get('ca:token', '');
@@ -170,7 +175,18 @@ if (!proxyUrl && /\.vercel\.app$/.test(location.hostname)) proxyUrl = location.o
 const canCall = () => LOCAL || !!proxyUrl || !!apiKey;
 let segs = [], history = [], summaryMd = '', image = null, fixCount = 0;
 const course = () => $('course').value.trim();
-const slidesText = () => (store.get('ca:slides:' + course(), null) || {}).text || '';
+/* A course can have several slide files, stored as [{name, text}] (the older single {name, text} still loads). */
+const slidesKey = () => 'ca:slides:' + course();
+const slideFiles = () => { const v = store.get(slidesKey(), null); return !v ? [] : Array.isArray(v) ? v : [v]; };
+function slidesText() {
+  const files = slideFiles(); if (!files.length) return '';
+  /* Share the prompt budget fairly: short files stay whole, long ones are cut to an equal share of what is left. */
+  let left = SLIDE_MAX; const cut = {};
+  files.map((_, i) => i).sort((a, b) => files[a].text.length - files[b].text.length).forEach((i, k, all) => {
+    cut[i] = Math.min(files[i].text.length, Math.floor(left / (all.length - k))); left -= cut[i];
+  });
+  return files.map((f, i) => `=== File ${i + 1} of ${files.length}: ${f.name} ===\n` + f.text.slice(0, cut[i])).join('\n\n');
+}
 
 function toast(msg, ms = 3200) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), ms); }
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -182,7 +198,7 @@ const SUMMARY_PROMPT = "Write a class summary for a student who just attended a 
 
 function systemBlocks(system) {
   const blocks = [{ type: 'text', text: system }], s = slidesText();
-  if (s) blocks.push({ type: 'text', text: "Teacher's slides (extracted text):\n" + s.slice(0, SLIDE_MAX), cache_control: { type: 'ephemeral' } });
+  if (s) blocks.push({ type: 'text', text: "Teacher's slides and handouts (extracted text; one or more files):\n" + s, cache_control: { type: 'ephemeral' } });
   return blocks;
 }
 async function claudeRaw(body) {
@@ -322,24 +338,53 @@ async function pdfText(file) {
 }
 function slideStatus() {
   $('slCourse').textContent = course() || '（請先在上方輸入課程名稱）';
-  const s = store.get('ca:slides:' + course(), null);
-  const msg = s ? `✓ 已載入：${s.name}（${s.text.length.toLocaleString()} 字元）` : '尚未載入投影片。';
-  $('slState').textContent = msg; $('stSlides').textContent = s ? `投影片：${s.name}` : '尚未載入投影片';
+  const files = slideFiles(), total = files.reduce((n, f) => n + f.text.length, 0);
+  $('slState').textContent = files.length
+    ? `✓ 已載入 ${files.length} 個檔案（共 ${total.toLocaleString()} 字元）` + (total > SLIDE_MAX ? '。內容很多，每個檔案只會取前面的一部分給 Claude。' : '')
+    : '尚未載入投影片。';
+  $('stSlides').textContent = files.length ? `投影片：${files.length} 個檔案` : '尚未載入投影片';
+  const list = $('slList'); list.textContent = '';
+  files.forEach((f, i) => {
+    const row = document.createElement('div'); row.className = 'slitem';
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = f.name;
+    const sz = document.createElement('span'); sz.className = 'hint'; sz.textContent = f.text.length.toLocaleString() + ' 字元';
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'btn'; x.textContent = '移除'; x.onclick = () => removeSlide(i);
+    row.append(nm, sz, x); list.appendChild(row);
+  });
 }
+function removeSlide(i) {
+  const files = slideFiles(); files.splice(i, 1);
+  if (files.length) store.set(slidesKey(), files); else store.del(slidesKey());
+  slideStatus();
+}
+/* Adds one file's text (a file with the same name is replaced). Returns '' on success, otherwise the reason. */
 function saveSlides(name, text) {
   text = text.replace(/[ \t]+\n/g, '\n').trim();
-  if (text.split(/\s+/).length < 10) { toast('讀不到文字（掃描檔的投影片沒有文字層）', 6000); return; }
-  if (!course()) { toast('請先輸入本堂課程名稱', 4000); $('course').focus(); return; }
-  store.set('ca:slides:' + course(), { name, text: text.slice(0, SLIDE_MAX * 2) }); slideStatus(); toast('投影片已載入');
+  if (text.split(/\s+/).length < 10) return '讀不到文字（掃描檔的投影片沒有文字層）';
+  const files = slideFiles().filter(f => f.name !== name); files.push({ name, text: text.slice(0, SLIDE_MAX * 2) });
+  return store.set(slidesKey(), files) ? '' : '瀏覽器儲存空間不足，請先移除不需要的檔案';
 }
-$('slBtn').onclick = () => { if (!course()) { toast('請先輸入本堂課程名稱', 4000); $('course').focus(); return; } $('slFile').click(); };
+const needCourse = () => { if (course()) return true; toast('請先輸入本堂課程名稱', 4000); $('course').focus(); return false; };
+$('slBtn').onclick = () => { if (needCourse()) $('slFile').click(); };
 $('slFile').onchange = async e => {
-  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  $('slState').textContent = '讀取中…';
-  try { saveSlides(f.name, /\.pdf$/i.test(f.name) ? await pdfText(f) : await f.text()); } catch (err) { toast(err.message, 6000); slideStatus(); }
+  const picked = [...e.target.files]; e.target.value = ''; if (!picked.length) return;
+  let ok = 0; const bad = [];
+  for (const [i, f] of picked.entries()) {
+    $('slState').textContent = `讀取中…（${i + 1}/${picked.length}）${f.name}`;
+    try { const why = saveSlides(f.name, /\.pdf$/i.test(f.name) ? await pdfText(f) : await f.text()); if (why) bad.push(`${f.name}：${why}`); else ok++; }
+    catch (err) { bad.push(`${f.name}：${err.message}`); }
+  }
+  slideStatus();
+  if (bad.length) toast(bad.join('\n'), 7000); else toast(`已載入 ${ok} 個檔案`);
 };
-$('slUse').onclick = () => saveSlides('貼上的文字', $('slText').value);
-$('slClear').onclick = () => { store.del('ca:slides:' + course()); slideStatus(); };
+$('slUse').onclick = () => {
+  if (!needCourse()) return;
+  const n = slideFiles().filter(f => /^貼上的文字/.test(f.name)).length + 1;
+  const why = saveSlides(`貼上的文字 ${n}`, $('slText').value);
+  if (why) toast(why, 5000); else { $('slText').value = ''; toast('已加入'); }
+  slideStatus();
+};
+$('slClear').onclick = () => { store.del(slidesKey()); slideStatus(); };
 
 /* ───────── Ask ───────── */
 function bubble(kind, text, img) {
