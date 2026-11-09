@@ -57,6 +57,7 @@ aside.right { min-width: 0; min-height: 0; display: flex; flex-direction: column
 .msg.user { align-self: flex-end; max-width: 88%; background: var(--accent-soft); }
 .msg.bot { background: var(--surface-2); }
 .msg.err { background: var(--bad-soft); color: var(--bad); }
+.msg code { background: var(--surface); padding: 0 4px; border-radius: 4px; font-size: .92em; }
 .msg img { display: block; max-width: 100%; max-height: 150px; border-radius: 8px; margin-bottom: 6px; }
 .composer { border-top: 1px solid var(--line); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
 .composer textarea { width: 100%; resize: none; min-height: 46px; max-height: 140px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); padding: 9px 11px; }
@@ -193,7 +194,7 @@ const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 
 /* ───────── Claude (called straight from the browser with the viewer's own key) ───────── */
 const CORRECT_PROMPT = "You fix speech-recognition errors in a live transcript of an English-language class (the students are learning English, so the teacher may speak slowly, repeat words, or spell things out).\nYou are given the teacher's slides, the lesson topic, a few earlier lines for context, and new lines to check.\nRules:\n- Only change a word or phrase when it is very likely a recognition error, e.g. a homophone or a mangled term that the slides or the lesson topic clearly show was something else (names, vocabulary items, grammar terms, example sentences copied from the slides).\n- Never paraphrase, summarize, translate, add words the teacher did not say, or fix the teacher's own grammar/pronunciation mistakes; this is a verbatim transcript.\n- Keep punctuation and capitalization natural, but do not restructure sentences.\n- If a line is fine, leave it out of the answer.\nReply with JSON only: {\"fixes\": [{\"id\": <number>, \"text\": \"<the whole corrected line>\"}]}";
-const ASK_PROMPT = "You are the student's in-class assistant during a live, in-person English-language class. You can see the lesson topic, the teacher's slides, the live transcript so far (it may contain recognition errors; the slides are more reliable), and sometimes a photo the student took (the board, a slide, a worksheet, a question the teacher just asked).\nBe quick and practical: the student is reading this while the class goes on. Lead with the answer in 1-4 short sentences, then add detail only if useful. If the teacher just asked a question, suggest a good answer the student could say out loud, in simple natural English, and explain briefly why. Reply in the language the student wrote in (Traditional Chinese if they wrote Chinese), but keep English examples, vocabulary and sentences in English. Do not invent what the teacher said; if the transcript does not show it, say so.";
+const ASK_PROMPT = "You are the student's in-class assistant during a live, in-person English-language class. You can see the lesson topic, the teacher's slides, the live transcript so far (it may contain recognition errors; the slides are more reliable), and sometimes a photo the student took (the board, a slide, a worksheet, a question the teacher just asked).\nThe student reads this while the class goes on, so be brief: answer in 1-4 short sentences, normally under 100 words, and add more only if the student asks for detail. Answer exactly what was asked; do not recap the lesson, and do not point out transcript errors unless asked. If the teacher just asked a question, give one good answer the student can say out loud in simple natural English, plus a few words on why.\nFormat: plain text only. Never use Markdown symbols (no **, no #, no backticks, no tables). For a list, put each item on its own line starting with 1. 2. 3. or the character ・. Reply in the language the student wrote in (Traditional Chinese if they wrote Chinese), but keep English examples, vocabulary and sentences in English. Do not invent what the teacher said; if the transcript does not show it, say so.";
 const SUMMARY_PROMPT = "Write a class summary for a student who just attended a live English-language class. Use the lesson topic, the teacher's slides and the full transcript (it may contain recognition errors; trust the slides). Also use the questions the student asked during class and the answers they got.\nWrite in Traditional Chinese, keeping English vocabulary, phrases and example sentences in English. Use these Markdown sections, skipping any that have nothing in them:\n## 本堂主題\n## 重點整理\n## 新單字與片語（附意思與例句）\n## 文法與句型\n## 老師的提問與建議回答\n## 我在課堂上的提問\n## 課後練習與待辦\nOnly include what the class actually covered; do not pad.";
 
 function systemBlocks(system) {
@@ -387,10 +388,16 @@ $('slUse').onclick = () => {
 $('slClear').onclick = () => { store.del(slidesKey()); slideStatus(); };
 
 /* ───────── Ask ───────── */
+/* Chat bubbles: show any **bold**, `code`, # headings and - bullets as formatting instead of raw symbols. */
+function inlineMd(src) {
+  return esc(src).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/^#{1,6}\s+(.*)$/gm, '<b>$1</b>').replace(/^\s*[-*]\s+/gm, '・');
+}
 function bubble(kind, text, img) {
   const box = $('chat'), d = document.createElement('div'); d.className = 'msg ' + kind;
   if (img) { const im = document.createElement('img'); im.src = img; d.appendChild(im); }
-  d.appendChild(document.createTextNode(text)); box.appendChild(d); box.scrollTop = box.scrollHeight; return d;
+  if (kind.startsWith('bot')) { const t = document.createElement('span'); t.innerHTML = inlineMd(text); d.appendChild(t); } else d.appendChild(document.createTextNode(text));
+  box.appendChild(d); box.scrollTop = box.scrollHeight; return d;
 }
 function fileToImage(file) {
   return new Promise((resolve, reject) => {
@@ -420,8 +427,8 @@ async function ask() {
   if (img) content.push({ type: 'image', source: { type: 'base64', media_type: img.media_type, data: img.data } });
   content.push({ type: 'text', text: `Lesson topic: ${course() || '(not given)'}\n\nLive transcript so far (most recent part, may contain errors):\n${liveTranscript().slice(-24000) || '(nothing yet)'}\n\nStudent: ${q || '(photo only: what is this and what should I do?)'}` });
   try {
-    const ans = await claudeStream(ASK_PROMPT, [...hist, { role: 'user', content }], MODEL_MAIN, 1500, t => { out.textContent = t; $('chat').scrollTop = $('chat').scrollHeight; });
-    out.textContent = ans || '（沒有回應）';
+    const ans = await claudeStream(ASK_PROMPT, [...hist, { role: 'user', content }], MODEL_MAIN, 900, t => { out.innerHTML = inlineMd(t); $('chat').scrollTop = $('chat').scrollHeight; });
+    out.innerHTML = inlineMd(ans || '（沒有回應）');
     history.push({ role: 'user', content: (img ? '[附上一張照片] ' : '') + q }, { role: 'assistant', content: ans }); saveSoon();
   } catch (e) { out.className = 'msg err'; out.textContent = e.message; }
   $('send').disabled = false;
