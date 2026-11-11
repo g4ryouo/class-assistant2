@@ -2,10 +2,10 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>課堂助理</title>
 <style>
-/* Layout: header bar on top; live transcript on the left, Ask / Slides / Summary panel on the right. */
+/* Phone-first: the home screen has only Record and Summary. Transcript, Ask, Slides and More open as full-screen sheets from the icons. */
 :root {
   --bg: #f6f5f1; --surface: #ffffff; --surface-2: #efede7; --ink: #1d1d1b; --ink-2: #4a4944; --ink-3: #7b7a73;
   --line: #dcdad2; --accent: #b4532a; --accent-ink: #ffffff; --accent-soft: #f3e1d6; --ok: #3f7d4e; --bad: #b3372a; --bad-soft: #f7dfdb;
@@ -14,134 +14,159 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #1c1c1a; --surface: #262624; --surface-2: #30302d; --ink: #f2f1ec; --ink-2: #cfcdc4; --ink-3: #98968d;
   --line: #3b3b37; --accent: #e0805a; --accent-ink: #1c1c1a; --accent-soft: #3a2c25; --ok: #7fb58c; --bad: #e58a7d; --bad-soft: #3d2623; color-scheme: dark; } }
-* { box-sizing: border-box; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { -webkit-text-size-adjust: 100%; }
 html, body { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--ink); font: 14px/1.6 var(--font); display: flex; flex-direction: column; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font); display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 button, input, select, textarea { font: inherit; color: inherit; }
-header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
-h1 { font-size: 15px; margin: 0 6px 0 0; font-weight: 650; }
-.field { display: flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: 12px; }
-.field input, .field select { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 6px 9px; color: var(--ink); }
-#course { width: 220px; }
-.btn { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 6px 14px; cursor: pointer; font-weight: 600; font-size: 13px; color: var(--ink-2); }
+input, select, textarea { font-size: 16px; }   /* 16px stops iOS from zooming in when a field is focused */
+.spacer { flex: 1; }
+.top { display: flex; align-items: center; gap: 2px; padding: 6px 10px 6px 20px; }
+.brand { flex: 1; font-weight: 650; font-size: 17px; }
+.icon { position: relative; width: 44px; height: 44px; border: 0; background: transparent; border-radius: 12px; display: grid; place-items: center; color: var(--ink-2); cursor: pointer; }
+.icon:hover, .icon:active { background: var(--surface-2); }
+.icon svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.icon svg .f { fill: currentColor; stroke: none; }
+.btn { min-height: 44px; border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 9px 18px; cursor: pointer; font-weight: 600; font-size: 15px; color: var(--ink-2); }
 .btn:hover { background: var(--surface-2); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn:disabled { opacity: .5; cursor: wait; }
-.btn:focus-visible, .tab:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-#rec { display: inline-flex; align-items: center; gap: 8px; padding: 7px 18px; }
-#rec .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
-#rec.live { background: var(--bad); border-color: var(--bad); color: #fff; }
-#rec.live .dot { animation: pulse 1.2s infinite; }
-@keyframes pulse { 50% { opacity: .25; } }
-@media (prefers-reduced-motion: reduce) { #rec.live .dot { animation: none; } }
-.spacer { flex: 1; }
-main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 430px; }
-section.left { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-aside.right { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--surface); }
-#tx { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 28px 40px; font-size: 19px; line-height: 1.65; }
-.seg { margin: 0 0 14px; max-width: 46em; }
-.seg.fixed { text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 5px; }
+.btn.block { width: 100%; }
+.btn:focus-visible, .icon:focus-visible, .recbtn:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.home { flex: 1; min-height: 0; overflow-y: auto; width: 100%; max-width: 640px; margin: 0 auto; padding: 8px 20px 32px; display: flex; flex-direction: column; gap: 26px; }
+#course { width: 100%; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 12px 14px; }
+.recwrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.recbtn { width: 150px; height: 150px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-weight: 700; font-size: 18px; cursor: pointer; box-shadow: 0 6px 24px rgba(0,0,0,.16); margin: 4px 0 6px; }
+.recbtn .dot { width: 14px; height: 14px; border-radius: 50%; background: currentColor; }
+.recbtn.live { background: var(--bad); color: #fff; animation: ring 1.6s infinite; }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(179,55,42,.45); } 100% { box-shadow: 0 0 0 28px rgba(179,55,42,0); } }
+@media (prefers-reduced-motion: reduce) { .recbtn.live { animation: none; } }
+#recTime { font-size: 36px; line-height: 1.1; font-weight: 300; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.recmeta { color: var(--ink-3); font-size: 14px; min-height: 22px; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 14px; font-size: 14px; color: var(--ink-2); cursor: pointer; min-height: 38px; }
+.statusline { color: var(--ink-3); font-size: 12.5px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+.center { text-align: center; }
+.sumcard { display: flex; flex-direction: column; gap: 14px; }
+.sum { line-height: 1.75; }
+.sum h2 { font-size: 16px; margin: 18px 0 6px; } .sum h2:first-child { margin-top: 0; }
+.sum ul { margin: 4px 0 8px; padding-left: 22px; } .sum p { margin: 4px 0; }
+.hint { color: var(--ink-3); font-size: 13.5px; line-height: 1.65; }
+.sheet { position: fixed; left: 0; right: 0; top: 0; height: var(--vvh, 100dvh); z-index: 40; background: var(--bg); display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.sheet[hidden] { display: none; }
+.sheethead { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 20px; border-bottom: 1px solid var(--line); }
+.sheethead strong { flex: 1; font-size: 17px; }
+.sheetbody { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: 720px; margin: 0 auto; }
+#tx { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px 40px; font-size: 18px; line-height: 1.7; }
+.seg { margin: 0 0 14px; }
+.seg.fixed { text-decoration: underline dotted var(--accent) 1.5px; text-underline-offset: 5px; cursor: pointer; }
 .seg.interim { color: var(--ink-3); }
+.orig { margin: -8px 0 14px; color: var(--ink-3); font-size: 14px; }
 .unsure { color: var(--bad); font-weight: 700; }
 .ts { display: inline-block; margin-right: 10px; color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; vertical-align: 3px; letter-spacing: .02em; }
-.empty { color: var(--ink-3); font-size: 15px; max-width: 34em; }
-.statusline { padding: 6px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); display: flex; gap: 14px; flex-wrap: wrap; }
-.tabs { display: flex; gap: 2px; padding: 8px 12px 0; border-bottom: 1px solid var(--line); }
-.tab { border: 0; background: none; padding: 8px 12px; cursor: pointer; color: var(--ink-3); font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; }
-.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
-.pane { display: none; flex: 1; min-height: 0; flex-direction: column; }
-.pane.on { display: flex; }
-.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-.hint { color: var(--ink-3); font-size: 12.5px; line-height: 1.65; }
-.msg { padding: 9px 12px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
+.empty { color: var(--ink-3); font-size: 15px; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.msg { padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; word-break: break-word; }
 .msg.user { align-self: flex-end; max-width: 88%; background: var(--accent-soft); }
 .msg.bot { background: var(--surface-2); }
 .msg.err { background: var(--bad-soft); color: var(--bad); }
 .msg code { background: var(--surface); padding: 0 4px; border-radius: 4px; font-size: .92em; }
-.msg img { display: block; max-width: 100%; max-height: 150px; border-radius: 8px; margin-bottom: 6px; }
-.composer { border-top: 1px solid var(--line); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
-.composer textarea { width: 100%; resize: none; min-height: 46px; max-height: 140px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); padding: 9px 11px; }
+.msg img { display: block; max-width: 100%; max-height: 160px; border-radius: 8px; margin-bottom: 6px; }
+.composer { border-top: 1px solid var(--line); padding: 10px 16px 12px; display: flex; flex-direction: column; gap: 8px; }
+.composer textarea { width: 100%; resize: none; min-height: 48px; max-height: 140px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 10px 12px; }
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.thumb { display: none; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); }
+.thumb { display: none; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-3); }
 .thumb.on { display: flex; }
-.thumb img { height: 38px; border-radius: 6px; }
-.card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--bg); display: flex; flex-direction: column; gap: 8px; }
-.card textarea { width: 100%; min-height: 90px; resize: vertical; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 8px 10px; }
-.sum { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; line-height: 1.7; }
-.sum h2 { font-size: 14.5px; margin: 16px 0 6px; } .sum h2:first-child { margin-top: 0; }
-.sum ul { margin: 4px 0 8px; padding-left: 20px; } .sum p { margin: 4px 0; }
-.bar { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.thumb img { height: 42px; border-radius: 6px; }
+.card { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--surface); display: flex; flex-direction: column; gap: 10px; }
+.card textarea { width: 100%; min-height: 90px; resize: vertical; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); padding: 10px 12px; }
+.sel { width: 100%; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 12px 14px; }
 #slList { display: flex; flex-direction: column; gap: 6px; }
-.slitem { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px 6px 12px; background: var(--surface); }
+.slitem { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px 6px 12px; background: var(--bg); }
 .slitem .nm { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.slitem .btn { padding: 3px 10px; font-size: 12px; }
+.slitem .btn { min-height: 36px; padding: 4px 12px; font-size: 13px; }
 dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); padding: 20px; max-width: 460px; width: calc(100% - 32px); }
 dialog::backdrop { background: rgba(0,0,0,.45); }
-dialog h2 { margin: 0 0 8px; font-size: 16px; }
-dialog input[type=password], dialog input[type=text] { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 8px 10px; margin: 6px 0 10px; }
-#toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 999px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 90vw; z-index: 50; }
+dialog h2 { margin: 0 0 8px; font-size: 17px; }
+dialog input[type=password], dialog input[type=text] { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); padding: 10px 12px; margin: 6px 0 10px; }
+#toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 90vw; z-index: 60; white-space: pre-line; text-align: center; }
 #toast.on { opacity: 1; }
-@media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr 1fr; } aside.right { border-left: 0; border-top: 1px solid var(--line); } #course { width: 150px; } #tx { padding: 14px 16px; font-size: 17px; } }
 </style>
 </head>
 <body>
-<header>
-  <h1>✻ 課堂助理</h1>
-  <label class="field">課程 <input id="course" type="text" placeholder="本堂課名稱，例如 English B1 Unit 5" autocomplete="off"></label>
-  <label class="field">語言 <select id="lang"><option value="zh-TW">中文（台灣）</option><option value="en-US" selected>English (US)</option><option value="en-GB">English (UK)</option><option value="en-AU">English (AU)</option><option value="en-IN">English (IN)</option></select></label>
-  <span class="spacer"></span>
-  <button class="btn" id="newBtn" type="button">新課堂</button>
-  <button class="btn" id="expBtn" type="button">匯出 .md</button>
-  <button class="btn" id="keyBtn" type="button" hidden>連線設定</button>
-  <button class="btn primary" id="rec" type="button"><span class="dot"></span><span id="recLabel">開始錄音</span></button>
+<header class="top">
+  <div class="brand">✻ 課堂助理</div>
+  <button class="icon" id="btnTx" type="button" aria-label="逐字稿" title="逐字稿"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/></svg></button>
+  <button class="icon" id="btnAsk" type="button" aria-label="提問" title="提問"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H10l-6 4z"/></svg></button>
+  <button class="icon" id="btnSlides" type="button" aria-label="投影片" title="投影片"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4M8 20h8"/></svg></button>
+  <button class="icon" id="btnMore" type="button" aria-label="更多" title="更多"><svg viewBox="0 0 24 24"><circle class="f" cx="5" cy="12" r="1.8"/><circle class="f" cx="12" cy="12" r="1.8"/><circle class="f" cx="19" cy="12" r="1.8"/></svg></button>
 </header>
 
-<main>
-  <section class="left">
-    <div id="tx" aria-live="polite"></div>
+<main class="home">
+  <input id="course" type="text" placeholder="本堂課名稱，例如 English B1 Unit 5" autocomplete="off" enterkeyhint="done">
+  <section class="recwrap">
+    <button id="rec" class="recbtn" type="button"><span class="dot"></span><span id="recLabel">開始錄音</span></button>
+    <div id="recTime">00:00</div>
+    <div class="recmeta"><span id="recCount"></span></div>
+    <button class="chip" id="langChip" type="button">語言：English (US)</button>
     <div class="statusline"><span id="stRec">未錄音</span><span id="stSlides">尚未載入投影片</span><span id="stFix">修正 0 處</span></div>
+    <div class="hint center">錄音時請保持螢幕亮著，不要切換到其他 App。</div>
   </section>
-
-  <aside class="right">
-    <div class="tabs" role="tablist">
-      <button class="tab" role="tab" data-tab="ask" aria-selected="true" type="button">問答</button>
-      <button class="tab" role="tab" data-tab="slides" aria-selected="false" type="button">投影片</button>
-      <button class="tab" role="tab" data-tab="sum" aria-selected="false" type="button">課堂總結</button>
-    </div>
-
-    <div class="pane on" id="pane-ask">
-      <div class="scroll" id="chat"><div class="hint">上課中隨時打字提問，也可以貼上截圖（⌘V）、拖曳或選擇照片：老師的題目、板書、投影片都可以。我會參考投影片和目前為止的逐字稿回答。Enter 送出，Shift+Enter 換行。</div></div>
-      <div class="composer">
-        <div class="thumb" id="thumb"><img id="thumbImg" alt=""><span>已附上照片</span><button class="btn" id="thumbX" type="button">移除</button></div>
-        <textarea id="q" rows="2" placeholder="例如：老師剛剛問什麼？我可以怎麼回答？"></textarea>
-        <div class="row"><button class="btn" id="imgBtn" type="button">📷 照片</button><input type="file" id="imgFile" accept="image/*" hidden><span class="spacer"></span><button class="btn primary" id="send" type="button">送出</button></div>
-      </div>
-    </div>
-
-    <div class="pane" id="pane-slides">
-      <div class="scroll">
-        <div class="card">
-          <div><b>課程：</b><span id="slCourse">（請先在上方輸入課程名稱）</span></div>
-          <div id="slState" class="hint">尚未載入投影片。</div>
-          <div id="slList"></div>
-          <div id="slTerms" class="hint"></div>
-          <div class="row"><button class="btn primary" id="slBtn" type="button">上傳 slide（可一次選多個）</button><button class="btn" id="slClear" type="button">全部清除</button></div>
-          <input type="file" id="slFile" accept=".pdf,.txt,.md" multiple hidden>
-          <div class="hint">同一堂課有好幾份投影片或講義，可以一次選多個檔案，或分次上傳；同名檔案會被取代。老師給的是 PPT？可以先另存成 PDF，或把文字貼在下面（每貼一次算一份）。</div>
-          <textarea id="slText" placeholder="或把投影片文字貼在這裡"></textarea>
-          <div class="row"><button class="btn" id="slUse" type="button">使用這段文字</button></div>
-        </div>
-        <div class="hint">流程：輸入課程名稱 → 上傳 slide → 按「開始錄音」。<br>每隔幾句，Claude 會對照 slide 修正辨識錯的字（有虛線底線，滑鼠移上去看原文）；問答和總結也都會參考 slide。換一堂課就換課程名稱，各堂課的 slide 分開儲存在這個瀏覽器。</div>
-      </div>
-    </div>
-
-    <div class="pane" id="pane-sum">
-      <div class="sum" id="sumBody"><div class="hint">下課後按「產生總結」，會依據 slide、完整逐字稿，以及你課堂上問過的問題，整理出課堂總結。</div></div>
-      <div class="bar"><button class="btn primary" id="sumBtn" type="button">產生總結</button><button class="btn" id="sumCopy" type="button">複製</button></div>
-    </div>
-  </aside>
+  <section class="sumcard">
+    <button class="btn primary block" id="sumBtn" type="button">產生總結</button>
+    <div class="sum" id="sumBody"><div class="hint">下課後按「產生總結」，會先整理好完整逐字稿，再依據投影片和你課堂上問過的問題，整理出課堂總結。</div></div>
+    <div class="row"><button class="btn" id="sumCopy" type="button">複製總結</button></div>
+  </section>
 </main>
+
+<div class="sheet" id="sheet-tx" hidden role="dialog" aria-label="逐字稿">
+  <div class="sheethead"><strong>逐字稿</strong><button class="icon" type="button" data-close aria-label="關閉"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="sheetbody"><div id="tx" aria-live="polite"></div></div>
+</div>
+
+<div class="sheet" id="sheet-ask" hidden role="dialog" aria-label="提問">
+  <div class="sheethead"><strong>提問</strong><button class="icon" type="button" data-close aria-label="關閉"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="sheetbody">
+    <div class="scroll" id="chat"><div class="hint">上課中隨時打字提問，也可以點「📷 照片」拍照或選照片（老師的題目、板書、投影片都可以）。我會參考投影片和目前為止的逐字稿回答。</div></div>
+    <div class="composer">
+      <div class="thumb" id="thumb"><img id="thumbImg" alt=""><span>已附上照片</span><button class="btn" id="thumbX" type="button">移除</button></div>
+      <textarea id="q" rows="2" placeholder="例如：老師剛剛問什麼？我可以怎麼回答？"></textarea>
+      <div class="row"><button class="btn" id="imgBtn" type="button">📷 照片</button><input type="file" id="imgFile" accept="image/*" hidden><span class="spacer"></span><button class="btn primary" id="send" type="button">送出</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="sheet-slides" hidden role="dialog" aria-label="投影片">
+  <div class="sheethead"><strong>投影片</strong><button class="icon" type="button" data-close aria-label="關閉"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="sheetbody"><div class="scroll">
+    <div class="card">
+      <div><b>課程：</b><span id="slCourse">（請先在主畫面輸入課程名稱）</span></div>
+      <div id="slState" class="hint">尚未載入投影片。</div>
+      <div id="slList"></div>
+      <div id="slTerms" class="hint"></div>
+      <div class="row"><button class="btn primary" id="slBtn" type="button">上傳 slide（可一次選多個）</button><button class="btn" id="slClear" type="button">全部清除</button></div>
+      <input type="file" id="slFile" accept=".pdf,.txt,.md" multiple hidden>
+      <div class="hint">同一堂課有好幾份投影片或講義，可以一次選多個檔案，或分次上傳；同名檔案會被取代。老師給的是 PPT？可以先另存成 PDF，或把文字貼在下面（每貼一次算一份）。</div>
+      <textarea id="slText" placeholder="或把投影片文字貼在這裡"></textarea>
+      <div class="row"><button class="btn" id="slUse" type="button">使用這段文字</button></div>
+    </div>
+    <div class="hint">流程：輸入課程名稱 → 上傳 slide → 按「開始錄音」。<br>停止錄音後，Claude 會自動對照 slide 把整份逐字稿整理一次（整理過的句子有虛線底線，點一下可看原文）；問答和總結也都會參考 slide。換一堂課就換課程名稱，各堂課的 slide 分開儲存在這個瀏覽器。</div>
+  </div></div>
+</div>
+
+<div class="sheet" id="sheet-more" hidden role="dialog" aria-label="更多">
+  <div class="sheethead"><strong>更多</strong><button class="icon" type="button" data-close aria-label="關閉"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="sheetbody"><div class="scroll">
+    <label class="hint" for="lang">辨識語言（開始錄音前先選好，一次錄音只能用一種）</label>
+    <select id="lang" class="sel"><option value="zh-TW">中文（台灣）</option><option value="en-US" selected>English (US)</option><option value="en-GB">English (UK)</option><option value="en-AU">English (AU)</option><option value="en-IN">English (IN)</option></select>
+    <button class="btn block" id="cpBtn" type="button">複製逐字稿（含修改前的原文）</button>
+    <button class="btn block" id="expBtn" type="button">匯出 .md（總結、逐字稿、修改對照、問答）</button>
+    <button class="btn block" id="keyBtn" type="button" hidden>連線設定</button>
+    <button class="btn block" id="newBtn" type="button">新課堂</button>
+  </div></div>
+</div>
 
 <dialog id="keyDlg">
   <h2>連線設定</h2>
@@ -206,18 +231,14 @@ const CORE_RULES = `Rules:
 4. Never invent. If a line makes no sense and cannot be tied to the slides or the surrounding lines, do not rewrite it into a fluent sentence. Leave it as it is, or, only when it is marked low confidence and contains no numbers or symbols, replace the whole text with [inaudible].
 5. Never add anything the teacher did not say: do not complete unfinished sentences, do not add an ending, do not repeat a sentence, and do not summarize, translate, explain or reorder.
 6. The only things you may remove are these spoken fillers: um, uh, er, you know, okay or right used purely as a filler, and stutters (a word repeated by accident). Write gonna, wanna and gotta as going to, want to and have to. When unsure whether something is filler, keep it. An example sentence the teacher is demonstrating, even a wrong or casual one, stays as said unless it matches a slide sentence.`;
-const CORRECT_PROMPT = `You correct speech-recognition errors in the transcript of a live class, using the teacher's slides as the reference. You are given the lesson topic, the slides and handouts, a list of key terms from them, a few earlier lines for context, and new lines to edit. Each line has an id and a text, and some have "low": true, which means the recognizer was unsure of that line. Timestamps and line order are kept by the app, so return only the new text of the lines you change.
-${CORE_RULES}
-If a line is already fine, leave it out. Return an empty string as the text only when the whole line consists of the fillers named in rule 6 and nothing else.
-Reply with JSON only, no explanations: {"fixes": [{"id": <number>, "text": "<the whole edited line>"}]}`;
 const FINAL_PROMPT = `You produce the final clean version of a class transcript. The lines come from a speech recognizer and were already lightly corrected while the class was running. Now use the slides, the key terms and the surrounding lines to fix what that live pass missed. You are given the lesson topic, the slides and handouts, a list of key terms, a few earlier lines for context, and numbered lines to edit, written as [id] text. A line marked (low confidence) is one the recognizer was unsure of.
 Return only the edits. An edit is {"ids": [first, ..., last], "text": "..."}: it replaces those consecutive lines with the text; the first line keeps its timestamp and the others disappear. Use a single id for a plain fix.
 ${CORE_RULES}
 Also: when a very short fragment (a word or two) clearly continues the neighbouring line, merge them into one sentence by listing both ids, and never drop any content when merging. If the same sentence is said twice in a row by accident, keep it once. If a line is already fine, leave it out. Use an empty text only for a line that consists only of the fillers named in rule 6.
 Reply with JSON only, no explanations: {"edits": [{"ids": [<number>, ...], "text": "<the whole edited text>"}]}`;
 const TERM_PROMPT = "From the teacher's slides and handouts, list the key terms a speech recognizer is likely to mishear or write as ordinary words: technical or professional vocabulary, proper nouns, grammar terms, vocabulary items and fixed phrases from the lesson, with their exact spelling. 1-4 words each, no everyday words, no duplicates, at most 60, most important first. Reply with JSON only: {\"terms\": [\"...\"]}";
-const ASK_PROMPT = "You are the student's in-class assistant during a live, in-person English-language class. You can see the lesson topic, the teacher's slides, the live transcript so far (it may contain recognition errors; the slides are more reliable), and sometimes a photo the student took (the board, a slide, a worksheet, a question the teacher just asked).\nThe student reads this while the class goes on, so be brief: answer in 1-4 short sentences, normally under 100 words, and add more only if the student asks for detail. Answer exactly what was asked; do not recap the lesson, and do not point out transcript errors unless asked. If the teacher just asked a question, give one good answer the student can say out loud in simple natural English, plus a few words on why.\nFormat: plain text only. Never use Markdown symbols (no **, no #, no backticks, no tables). For a list, put each item on its own line starting with 1. 2. 3. or the character ・. Reply in the language the student wrote in (Traditional Chinese if they wrote Chinese), but keep English examples, vocabulary and sentences in English. Do not invent what the teacher said; if the transcript does not show it, say so. A word followed by [?] in the transcript is uncertain.";
-const SUMMARY_PROMPT = "Write a class summary for a student who just attended a live English-language class. Use the lesson topic, the teacher's slides and the full transcript (it may contain recognition errors; trust the slides). Also use the questions the student asked during class and the answers they got.\nWrite in Traditional Chinese, keeping English vocabulary, phrases and example sentences in English. Use these Markdown sections, skipping any that have nothing in them:\n## 本堂主題\n## 重點整理\n## 新單字與片語（附意思與例句）\n## 文法與句型\n## 老師的提問與建議回答\n## 我在課堂上的提問\n## 課後練習與待辦\nOnly include what the class actually covered; do not pad. A word followed by [?] in the transcript is uncertain: do not rely on it.";
+const ASK_PROMPT = "You are the student's in-class assistant during a live, in-person English-language class. You can see the lesson topic, the teacher's slides, the live transcript so far (it may contain recognition errors; the slides are more reliable), and sometimes a photo the student took (the board, a slide, a worksheet, a question the teacher just asked).\nThe student reads this while the class goes on, so be brief: answer in 1-4 short sentences, normally under 100 words, and add more only if the student asks for detail. Answer exactly what was asked; do not recap the lesson, and do not point out transcript errors unless asked. If the teacher just asked a question, give one good answer the student can say out loud in simple natural English, plus a few words on why.\nFormat: plain text only. Never use Markdown symbols (no **, no #, no backticks, no tables). For a list, put each item on its own line starting with 1. 2. 3. or the character ・. Reply in the language the student wrote in (Traditional Chinese if they wrote Chinese), but keep English examples, vocabulary and sentences in English. Do not invent what the teacher said; if the transcript does not show it, say so. A word followed by [?] in the transcript is uncertain; if the line also shows (原始辨識：…), that is the raw recognizer text before cleanup, so use it to judge the uncertain word.";
+const SUMMARY_PROMPT = "Write a class summary for a student who just attended a live English-language class. Use the lesson topic, the teacher's slides and the full transcript (it may contain recognition errors; trust the slides). Also use the questions the student asked during class and the answers they got.\nWrite in Traditional Chinese, keeping English vocabulary, phrases and example sentences in English. Use these Markdown sections, skipping any that have nothing in them:\n## 本堂主題\n## 重點整理\n## 新單字與片語（附意思與例句）\n## 文法與句型\n## 老師的提問與建議回答\n## 我在課堂上的提問\n## 課後練習與待辦\nOnly include what the class actually covered; do not pad. A word followed by [?] in the transcript is uncertain: do not rely on it, unless the line also shows (原始辨識：…), the raw recognizer text, which can help you resolve it.";
 
 function systemBlocks(system) {
   const blocks = [{ type: 'text', text: system }], s = slidesText();
@@ -264,13 +285,25 @@ let rec = null, recording = false, restartTimer = 0, interimText = '', interimAt
 const pad2 = n => String(n).padStart(2, '0');
 const fmtTime = ms => { const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
 const stamp = s => (s.at ? `[${fmtTime(s.at)}] ` : '') + s.text;
+/* For Claude inside the app: a line with [?] or [inaudible] also carries the raw recognizer text, so it can be resolved. */
+const forClaude = s => stamp(s) + (s.fixed && s.orig && /\[\?\]|\[inaudible\]/.test(s.text) ? ` (原始辨識：${s.orig})` : '');
+/* For export and for pasting into another Claude chat: every changed line with its raw text under it. */
+function annotated() {
+  return segs.map(annotated.one).filter(Boolean).join('\n\n');
+}
+annotated.one = s => {
+  if (s.mergedInto != null) return '';
+  const when = s.at ? `[${fmtTime(s.at)}] ` : '';
+  if (!s.fixed || !s.orig || s.orig === s.text) return s.text ? stamp(s) : '';
+  return s.text ? `${stamp(s)}\n    原文：${s.orig}` : `${when}（整句刪除）\n    原文：${s.orig}`;
+};
 function timeSpan(ms) { const t = document.createElement('span'); t.className = 'ts'; t.textContent = fmtTime(ms); return t; }
 function renderTx() {
   const box = $('tx'), nearEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 140;
   box.textContent = '';
   if (!segs.some(s => s.text) && !interimText) {
     const d = document.createElement('div'); d.className = 'empty';
-    d.textContent = SR ? '輸入課程名稱、上傳 slide，然後按右上角「開始錄音」。老師說的話會即時顯示在這裡。' : '這個瀏覽器不支援即時語音辨識，請改用 Chrome（Mac 或 Windows 桌面版）。';
+    d.textContent = SR ? '還沒有逐字稿。回到主畫面按「開始錄音」，老師說的話會顯示在這裡。' : '這個瀏覽器不支援即時語音辨識，請改用 Chrome（Mac 或 Windows 桌面版）。';
     box.appendChild(d); return;
   }
   segs.filter(s => s.text).forEach(s => {
@@ -280,14 +313,30 @@ function renderTx() {
       if (part === '[?]' || part === '[inaudible]') { const u = document.createElement('span'); u.className = 'unsure'; u.textContent = part; p.appendChild(u); }
       else if (part) p.appendChild(document.createTextNode(part));
     });
-    if (s.fixed) p.title = '原文：' + s.orig; box.appendChild(p);
+    if (s.fixed) {
+      p.title = '原文：' + s.orig; p.onclick = () => { s.showOrig = !s.showOrig; renderTx(); };
+    }
+    box.appendChild(p);
+    if (s.fixed && s.showOrig) { const o = document.createElement('div'); o.className = 'orig'; o.textContent = '原文：' + s.orig; box.appendChild(o); }
   });
   if (interimText) { const p = document.createElement('p'); p.className = 'seg interim'; p.appendChild(timeSpan(interimAt || Date.now())); p.appendChild(document.createTextNode(interimText)); box.appendChild(p); }
   if (nearEnd || recording) box.scrollTop = box.scrollHeight;
+  updateRecInfo();
 }
+let recMs = 0, recSince = 0, recTick = 0, wakeLock = null;
+const fmtDur = ms => { const t = Math.floor(ms / 1000), h = Math.floor(t / 3600); return (h ? h + ':' : '') + pad2(Math.floor(t % 3600 / 60)) + ':' + pad2(t % 60); };
+function updateRecInfo() {
+  $('recTime').textContent = fmtDur(recMs + (recording ? Date.now() - recSince : 0));
+  const n = segs.filter(x => x.text).length; $('recCount').textContent = n ? `已記錄 ${n} 句` : '';
+}
+async function keepAwake() { try { if (navigator.wakeLock && recording && document.visibilityState === 'visible') wakeLock = await navigator.wakeLock.request('screen'); } catch {} }
+function releaseAwake() { try { wakeLock && wakeLock.release(); } catch {} wakeLock = null; }
 function setRecUI() {
   $('rec').classList.toggle('live', recording); $('recLabel').textContent = recording ? '停止錄音' : '開始錄音';
   $('stRec').textContent = recording ? '● 錄音中' : '未錄音';
+  if (recording && !recTick) { recSince = Date.now(); recTick = setInterval(updateRecInfo, 1000); }
+  if (!recording && recTick) { clearInterval(recTick); recTick = 0; recMs += Date.now() - recSince; }
+  updateRecInfo();
 }
 function startRec() {
   if (!SR) { toast('這個瀏覽器不支援語音辨識，請使用 Chrome'); return; }
@@ -309,12 +358,11 @@ function startRec() {
   /* Chrome ends a session after a long silence or about a minute; keep going while recording. */
   rec.onend = () => { interimText = ''; renderTx(); if (recording) { clearTimeout(restartTimer); restartTimer = setTimeout(() => { try { rec.start(); } catch {} }, 250); } };
   recording = true; try { rec.start(); } catch {} setRecUI();
-  if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {});
+  keepAwake();
 }
-function stopRec() { recording = false; clearTimeout(restartTimer); try { rec && rec.stop(); } catch {} setRecUI(); flush(true); finalPass(); }
+function stopRec() { recording = false; clearTimeout(restartTimer); try { rec && rec.stop(); } catch {} setRecUI(); releaseAwake(); finalPass(); }
 
 /* ───────── Slide-aware correction ───────── */
-let queue = new Set(), flushTimer = 0, flushing = false;
 /* Numbers, ALL-CAPS terms (MRTS, MPL) and single-letter variables (K, L, w, r) must survive any edit. */
 function keyTokens(text) {
   return (text.match(/\S+/g) || []).map(w => w.replace(/^[^\w−-]+|[^\w−-]+$/g, ''))
@@ -324,31 +372,8 @@ const keepsKeyTokens = (orig, next) => keyTokens(orig).every(k => next.includes(
 function addSeg(text, conf) {
   /* Chrome reports 0 or nothing when it has no score; only a real, low score counts as "unsure". */
   segs.push({ text, orig: text, fixed: false, checked: false, at: Date.now(), low: conf > 0 && conf < 0.55 });
-  queue.add(segs.length - 1); saveSoon(); renderTx();
-  if (queue.size >= 3) flush(); else if (!flushTimer) flushTimer = setTimeout(flush, 6000);
+  saveSoon(); renderTx();
 }
-async function flush(force) {
-  clearTimeout(flushTimer); flushTimer = 0;
-  if (flushing || !queue.size || !canCall()) return;
-  flushing = true;
-  const ids = [...queue].sort((a, b) => a - b); queue.clear();
-  const sent = {}; ids.forEach(i => { if (segs[i]) sent[i] = segs[i].text; });
-  const before = segs.slice(Math.max(0, ids[0] - 6), ids[0]).map(s => s.text);
-  const prompt = `Lesson topic: ${course() || '(not given)'}\n\nEarlier lines (context only, do not return them):\n${before.join('\n')}\n\nLines to check:\n${JSON.stringify(Object.entries(sent).map(([id, text]) => (segs[id] && segs[id].low ? { id: +id, text, low: true } : { id: +id, text })))}`;
-  try {
-    const out = jsonObject(await claude(CORRECT_PROMPT, [{ role: 'user', content: prompt }], MODEL_FAST, 1500));
-    for (const fx of out.fixes || []) {
-      const s = segs[fx.id], t = String(fx.text == null ? s && s.text : fx.text).trim();
-      /* Cleanups may shorten a line a lot (fillers) or empty it (noise only); a rewrite that grows it is dropped. */
-      if (s && s.text === sent[fx.id] && t !== s.text && t.length <= s.text.length * 1.3 + 15 && (t === '' || t.length >= s.text.length * 0.25) && keepsKeyTokens(s.text, t)) { s.text = t; s.fixed = true; fixCount++; }
-    }
-    Object.keys(sent).forEach(i => { if (segs[i]) segs[i].checked = true; });
-    $('stFix').textContent = `修正 ${fixCount} 處`; renderTx(); saveSoon();
-  } catch (e) { console.warn('correction failed', e); if (/401|403/.test(e.message)) toast(e.message, 6000); }
-  flushing = false;
-  if (queue.size) flushTimer = setTimeout(flush, 2000);
-}
-
 /* ───────── Final pass: when recording stops, the whole lesson is cleaned up once, in place ───────── */
 let finalRunning = null;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -366,7 +391,7 @@ function applyEdits(edits, sent) {
     if (t === total || t.length > total.length * 1.2 + 15 || (t !== '' && t.length < total.length * 0.25) || !keepsKeyTokens(total, t)) continue;
     const first = segs[ids[0]];
     first.orig = ids.map(i => segs[i].orig || sent[i]).join(' '); first.text = t; first.fixed = true;
-    ids.slice(1).forEach(i => { segs[i].text = ''; segs[i].fixed = true; });
+    ids.slice(1).forEach(i => { segs[i].text = ''; segs[i].fixed = true; segs[i].mergedInto = ids[0]; });
     fixCount++; applied++;
   }
   return applied;
@@ -375,7 +400,6 @@ function finalPass() {
   if (finalRunning) return finalRunning;
   const run = (async () => {
     if (!canCall()) return;
-    for (let k = 0; k < 40 && (flushing || queue.size); k++) { if (!flushing && queue.size) flush(); await sleep(500); }
     const todo = segs.map((_, i) => i).filter(i => segs[i].text && !segs[i].final);
     if (!todo.length) return;
     $('stFix').textContent = '整理全文中…';
@@ -513,7 +537,7 @@ function fileToImage(file) {
 }
 async function setImage(f) { try { image = await fileToImage(f); $('thumbImg').src = image.preview; $('thumb').classList.add('on'); } catch (e) { toast(e.message); } }
 function clearImage() { image = null; $('thumb').classList.remove('on'); }
-const liveTranscript = () => segs.filter(s => s.text).map(stamp).concat(interimText ? [interimText] : []).join('\n');
+const liveTranscript = () => segs.filter(s => s.text).map(forClaude).concat(interimText ? [interimText] : []).join('\n');
 
 async function ask() {
   const q = $('q').value.trim(); if (!q && !image) return;
@@ -545,8 +569,8 @@ function md(src) {
   if (list) out.push('</ul>'); return out.join('');
 }
 async function summarize() {
-  if (finalRunning) { $('sumBody').innerHTML = '<div class="hint">等待全文整理完成…</div>'; await finalRunning; }
-  const text = segs.filter(s => s.text).map(stamp).join('\n');
+  if (segs.some(x => x.text && !x.final) && canCall()) { $('sumBody').innerHTML = '<div class="hint">整理逐字稿中…</div>'; await finalPass(); }
+  const text = segs.filter(s => s.text).map(forClaude).join('\n');
   if (text.split(/\s+/).length < 20) { toast('逐字稿太短，還不能總結'); return; }
   $('sumBtn').disabled = true; $('sumBody').innerHTML = '<div class="hint">整理中…</div>';
   const qa = history.slice(-40).map(h => `${h.role === 'user' ? 'Student' : 'Assistant'}: ${h.content.slice(0, 2000)}`).join('\n\n');
@@ -564,6 +588,8 @@ function exportMd() {
   const title = course() || '課堂記錄', parts = [`# ${title}`];
   if (summaryMd) parts.push('## 課堂總結\n\n' + summaryMd);
   parts.push('## 逐字稿\n\n' + segs.filter(s => s.text).map(stamp).join('\n\n'));
+  const changed = segs.filter(x => x.fixed && x.mergedInto == null && x.orig && x.orig !== x.text);
+  if (changed.length) parts.push('## 修改對照（修正後／原文）\n\n' + changed.map(x => annotated.one(x)).join('\n\n'));
   if (history.length) parts.push('## 課堂問答\n\n' + history.map(h => (h.role === 'user' ? '**我：** ' : '**助理：** ') + h.content).join('\n\n'));
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([parts.join('\n\n') + '\n'], { type: 'text/markdown;charset=utf-8' }));
@@ -583,8 +609,8 @@ function newClass() {
   if (recording) stopRec();
   if (segs.length && !confirmNew.armed) { confirmNew.armed = true; $('newBtn').textContent = '再按一次確認清除'; setTimeout(() => { confirmNew.armed = false; $('newBtn').textContent = '新課堂'; }, 4000); return; }
   confirmNew.armed = false; $('newBtn').textContent = '新課堂';
-  segs = []; history = []; summaryMd = ''; fixCount = 0; queue.clear(); interimText = ''; clearImage(); store.del('ca:session');
-  $('chat').innerHTML = ''; $('sumBody').innerHTML = '<div class="hint">下課後按「產生總結」。</div>'; $('stFix').textContent = '修正 0 處'; renderTx();
+  recMs = 0; recSince = Date.now(); segs = []; history = []; summaryMd = ''; fixCount = 0; interimText = ''; clearImage(); store.del('ca:session');
+  $('chat').innerHTML = ''; $('sumBody').innerHTML = '<div class="hint">下課後按「產生總結」。</div>'; $('stFix').textContent = '修正 0 處'; renderTx(); updateRecInfo(); closeSheets();
 }
 const confirmNew = { armed: false };
 
@@ -597,11 +623,31 @@ $('q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey &
 $('q').addEventListener('paste', e => { const f = [...(e.clipboardData?.files || [])].find(x => x.type.startsWith('image/')); if (f) { e.preventDefault(); setImage(f); } });
 $('chat').addEventListener('dragover', e => e.preventDefault());
 $('chat').addEventListener('drop', e => { const f = [...e.dataTransfer.files].find(x => x.type.startsWith('image/')); if (f) { e.preventDefault(); setImage(f); } });
-document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', t === b));
-  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + b.dataset.tab));
-  if (b.dataset.tab === 'slides') slideStatus();
-});
+const SHEETS = { tx: 'sheet-tx', ask: 'sheet-ask', slides: 'sheet-slides', more: 'sheet-more' };
+function openSheet(name) {
+  Object.entries(SHEETS).forEach(([k, id]) => { $(id).hidden = k !== name; });
+  if (name === 'slides') slideStatus();
+  if (name === 'tx') { renderTx(); const t = $('tx'); t.scrollTop = t.scrollHeight; }
+  if (name === 'ask') { const c = $('chat'); c.scrollTop = c.scrollHeight; }
+}
+function closeSheets() { Object.values(SHEETS).forEach(id => { $(id).hidden = true; }); }
+$('cpBtn').onclick = () => {
+  const text = annotated();
+  if (!text) { toast('還沒有逐字稿可以複製'); return; }
+  const body = `# ${course() || '逐字稿'}\n\n（每筆有修改的句子，下面一行的「原文」是修改前的原始辨識文字；[?] 表示沒把握，[inaudible] 表示聽不清楚。）\n\n${text}\n`;
+  navigator.clipboard.writeText(body).then(() => toast('已複製，可以貼給 Claude 檢查'), () => toast('無法複製，請改用匯出'));
+};
+$('btnTx').onclick = () => openSheet('tx'); $('btnAsk').onclick = () => openSheet('ask');
+$('btnSlides').onclick = () => openSheet('slides'); $('btnMore').onclick = () => openSheet('more');
+document.querySelectorAll('[data-close]').forEach(b => { b.onclick = closeSheets; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheets(); });
+/* The iPhone keyboard covers the bottom of a fixed sheet unless the sheet follows the visible height. */
+if (window.visualViewport) { const fit = () => document.documentElement.style.setProperty('--vvh', visualViewport.height + 'px'); visualViewport.addEventListener('resize', fit); fit(); }
+/* iOS stops recognition and releases the screen lock when the page goes to the background; pick both up again on return. */
+document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || !recording) return; keepAwake(); try { rec.start(); } catch {} });
+function paintLang() { $('langChip').textContent = '語言：' + $('lang').selectedOptions[0].textContent; }
+$('lang').addEventListener('change', () => { paintLang(); saveSoon(); });
+$('langChip').onclick = () => openSheet('more');
 $('course').addEventListener('input', () => { slideStatus(); saveSoon(); });
 $('keyBtn').onclick = () => { $('proxyIn').value = proxyUrl; $('tokenIn').value = appToken; $('keyIn').value = ''; $('keyIn').placeholder = apiKey ? '已設定（輸入新的以覆蓋）' : 'sk-ant-...'; $('keyDlg').showModal(); };
 $('keyCancel').onclick = () => $('keyDlg').close();
@@ -612,11 +658,11 @@ $('keySave').onclick = () => {
   store.set('ca:proxy', proxyUrl); store.set('ca:token', appToken); if (apiKey) store.set('ca:key', apiKey);
   $('keyDlg').close(); toast('連線設定已儲存');
 };
-document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('q').focus(); } });
+document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openSheet('ask'); $('q').focus(); } });
 window.addEventListener('beforeunload', e => { if (recording) { e.preventDefault(); e.returnValue = ''; } });
 
 if (!LOCAL) $('keyBtn').hidden = false;
-restore(); slideStatus(); renderTx(); setRecUI();
+restore(); paintLang(); slideStatus(); renderTx(); setRecUI();
 if (!canCall()) setTimeout(() => $('keyDlg').showModal(), 400);
 </script>
 </body>
