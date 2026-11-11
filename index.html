@@ -89,7 +89,7 @@ dialog input[type=password], dialog input[type=text] { width: 100%; border: 1px 
 <header>
   <h1>✻ 課堂助理</h1>
   <label class="field">課程 <input id="course" type="text" placeholder="本堂課名稱，例如 English B1 Unit 5" autocomplete="off"></label>
-  <label class="field">口音 <select id="lang"><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option><option value="en-AU">English (AU)</option><option value="en-IN">English (IN)</option></select></label>
+  <label class="field">語言 <select id="lang"><option value="zh-TW">中文（台灣）</option><option value="en-US" selected>English (US)</option><option value="en-GB">English (UK)</option><option value="en-AU">English (AU)</option><option value="en-IN">English (IN)</option></select></label>
   <span class="spacer"></span>
   <button class="btn" id="newBtn" type="button">新課堂</button>
   <button class="btn" id="expBtn" type="button">匯出 .md</button>
@@ -199,7 +199,22 @@ function toast(msg, ms = 3200) { const t = $('toast'); t.textContent = msg; t.cl
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /* ───────── Claude (called straight from the browser with the viewer's own key) ───────── */
-const CORRECT_PROMPT = "You correct speech-recognition errors in the transcript of a live class, using the teacher's slides as the reference. You are given the lesson topic, the slides and handouts, a list of key terms from them, a few earlier lines for context, and new lines to edit. Each line has an id; timestamps and line order are kept by the app, so return only the new text of the lines you change.\nRules:\n1. Fix only what you are confident about: proper nouns and terms (use the exact spelling from the slides), numbers, units and formulas. Match the terms and formulas on the slides: a spoken \"cobb douglas\" becomes Cobb-Douglas, \"m r t s equals w over r\" becomes MRTS = w/r, and \"minus four five\" becomes 20 − 0.5P when the slides show that formula. Use the slides to work out which words a teacher of this course would say.\n2. NEVER delete numbers, decimals, exponents, fractions, variables (K, L, w, r, P, Q, MPL, MPK, MRTS and the like), units or symbols. A short isolated fragment such as \"0.59\", \"K\" or \"L\" is content, not noise, because it is probably part of an equation the teacher is reading out. Keep it, even if it looks out of place.\n3. If a number, variable or word looks wrong but you are not sure what it should be, keep the original and write [?] right after it. Never guess and never delete it instead.\n4. Never add anything the teacher did not say. Do not summarize, translate, explain or reorder ideas, and do not make a line longer than it needs to be.\n5. The only things you may remove are these spoken fillers: um, uh, er, you know, and okay or right when used purely as a filler, plus stutters (a word repeated by accident). Write gonna, wanna and gotta as going to, want to and have to. Do not remove anything else, and when unsure whether something is filler, keep it. When the teacher demonstrates an example sentence, even a wrong or casual one, keep it as said unless it matches a slide sentence.\n6. If a line is already fine, leave it out. Return an empty string as the text only when the whole line consists of the fillers named in rule 5 and nothing else.\nReply with JSON only, no explanations: {\"fixes\": [{\"id\": <number>, \"text\": \"<the whole edited line>\"}]}";
+const CORE_RULES = `Rules:
+1. Fix only what you are confident about: proper nouns and terms, numbers, units and formulas. Change a heard word into a term from the slides or key terms only when the two sound very close; if you are not fully sure, write [?] right after the change. Turn spoken numbers and formulas into the written notation the slides use (for example "x squared plus two x" becomes x² + 2x when the slides write it that way). Never round, convert or recompute a number.
+2. NEVER delete numbers, decimals, exponents, fractions, variables, symbols or units, and never delete a short isolated fragment that could be part of an equation (such as "0.59", "K" or "L"): it is content, not noise.
+3. If something looks wrong but you are not sure what it should be, keep the original and write [?] right after it. Never guess and never delete it instead.
+4. Never invent. If a line makes no sense and cannot be tied to the slides or the surrounding lines, do not rewrite it into a fluent sentence. Leave it as it is, or, only when it is marked low confidence and contains no numbers or symbols, replace the whole text with [inaudible].
+5. Never add anything the teacher did not say: do not complete unfinished sentences, do not add an ending, do not repeat a sentence, and do not summarize, translate, explain or reorder.
+6. The only things you may remove are these spoken fillers: um, uh, er, you know, okay or right used purely as a filler, and stutters (a word repeated by accident). Write gonna, wanna and gotta as going to, want to and have to. When unsure whether something is filler, keep it. An example sentence the teacher is demonstrating, even a wrong or casual one, stays as said unless it matches a slide sentence.`;
+const CORRECT_PROMPT = `You correct speech-recognition errors in the transcript of a live class, using the teacher's slides as the reference. You are given the lesson topic, the slides and handouts, a list of key terms from them, a few earlier lines for context, and new lines to edit. Each line has an id and a text, and some have "low": true, which means the recognizer was unsure of that line. Timestamps and line order are kept by the app, so return only the new text of the lines you change.
+${CORE_RULES}
+If a line is already fine, leave it out. Return an empty string as the text only when the whole line consists of the fillers named in rule 6 and nothing else.
+Reply with JSON only, no explanations: {"fixes": [{"id": <number>, "text": "<the whole edited line>"}]}`;
+const FINAL_PROMPT = `You produce the final clean version of a class transcript. The lines come from a speech recognizer and were already lightly corrected while the class was running. Now use the slides, the key terms and the surrounding lines to fix what that live pass missed. You are given the lesson topic, the slides and handouts, a list of key terms, a few earlier lines for context, and numbered lines to edit, written as [id] text. A line marked (low confidence) is one the recognizer was unsure of.
+Return only the edits. An edit is {"ids": [first, ..., last], "text": "..."}: it replaces those consecutive lines with the text; the first line keeps its timestamp and the others disappear. Use a single id for a plain fix.
+${CORE_RULES}
+Also: when a very short fragment (a word or two) clearly continues the neighbouring line, merge them into one sentence by listing both ids, and never drop any content when merging. If the same sentence is said twice in a row by accident, keep it once. If a line is already fine, leave it out. Use an empty text only for a line that consists only of the fillers named in rule 6.
+Reply with JSON only, no explanations: {"edits": [{"ids": [<number>, ...], "text": "<the whole edited text>"}]}`;
 const TERM_PROMPT = "From the teacher's slides and handouts, list the key terms a speech recognizer is likely to mishear or write as ordinary words: technical or professional vocabulary, proper nouns, grammar terms, vocabulary items and fixed phrases from the lesson, with their exact spelling. 1-4 words each, no everyday words, no duplicates, at most 60, most important first. Reply with JSON only: {\"terms\": [\"...\"]}";
 const ASK_PROMPT = "You are the student's in-class assistant during a live, in-person English-language class. You can see the lesson topic, the teacher's slides, the live transcript so far (it may contain recognition errors; the slides are more reliable), and sometimes a photo the student took (the board, a slide, a worksheet, a question the teacher just asked).\nThe student reads this while the class goes on, so be brief: answer in 1-4 short sentences, normally under 100 words, and add more only if the student asks for detail. Answer exactly what was asked; do not recap the lesson, and do not point out transcript errors unless asked. If the teacher just asked a question, give one good answer the student can say out loud in simple natural English, plus a few words on why.\nFormat: plain text only. Never use Markdown symbols (no **, no #, no backticks, no tables). For a list, put each item on its own line starting with 1. 2. 3. or the character ・. Reply in the language the student wrote in (Traditional Chinese if they wrote Chinese), but keep English examples, vocabulary and sentences in English. Do not invent what the teacher said; if the transcript does not show it, say so. A word followed by [?] in the transcript is uncertain.";
 const SUMMARY_PROMPT = "Write a class summary for a student who just attended a live English-language class. Use the lesson topic, the teacher's slides and the full transcript (it may contain recognition errors; trust the slides). Also use the questions the student asked during class and the answers they got.\nWrite in Traditional Chinese, keeping English vocabulary, phrases and example sentences in English. Use these Markdown sections, skipping any that have nothing in them:\n## 本堂主題\n## 重點整理\n## 新單字與片語（附意思與例句）\n## 文法與句型\n## 老師的提問與建議回答\n## 我在課堂上的提問\n## 課後練習與待辦\nOnly include what the class actually covered; do not pad. A word followed by [?] in the transcript is uncertain: do not rely on it.";
@@ -261,7 +276,10 @@ function renderTx() {
   segs.filter(s => s.text).forEach(s => {
     const p = document.createElement('p'); p.className = 'seg' + (s.fixed ? ' fixed' : '');
     if (s.at) p.appendChild(timeSpan(s.at));
-    s.text.split('[?]').forEach((part, k) => { if (k) { const u = document.createElement('span'); u.className = 'unsure'; u.textContent = '[?]'; p.appendChild(u); } p.appendChild(document.createTextNode(part)); });
+    s.text.split(/(\[\?\]|\[inaudible\])/).forEach(part => {
+      if (part === '[?]' || part === '[inaudible]') { const u = document.createElement('span'); u.className = 'unsure'; u.textContent = part; p.appendChild(u); }
+      else if (part) p.appendChild(document.createTextNode(part));
+    });
     if (s.fixed) p.title = '原文：' + s.orig; box.appendChild(p);
   });
   if (interimText) { const p = document.createElement('p'); p.className = 'seg interim'; p.appendChild(timeSpan(interimAt || Date.now())); p.appendChild(document.createTextNode(interimText)); box.appendChild(p); }
@@ -278,7 +296,7 @@ function startRec() {
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const r = e.results[i], t = r[0].transcript.trim();
-      if (r.isFinal) { if (t) addSeg(t); } else interim += t + ' ';
+      if (r.isFinal) { if (t) addSeg(t, r[0].confidence); } else interim += t + ' ';
     }
     const next = interim.trim(); if (next && !interimText) interimAt = Date.now();
     interimText = next; renderTx();
@@ -293,7 +311,7 @@ function startRec() {
   recording = true; try { rec.start(); } catch {} setRecUI();
   if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {});
 }
-function stopRec() { recording = false; clearTimeout(restartTimer); try { rec && rec.stop(); } catch {} setRecUI(); flush(true); }
+function stopRec() { recording = false; clearTimeout(restartTimer); try { rec && rec.stop(); } catch {} setRecUI(); flush(true); finalPass(); }
 
 /* ───────── Slide-aware correction ───────── */
 let queue = new Set(), flushTimer = 0, flushing = false;
@@ -303,8 +321,9 @@ function keyTokens(text) {
     .filter(w => /^\d[\d.,]*$/.test(w) || /^[A-Z]{2,6}$/.test(w) || /^[b-hj-zB-HJ-Z]$/.test(w));
 }
 const keepsKeyTokens = (orig, next) => keyTokens(orig).every(k => next.includes(k));
-function addSeg(text) {
-  segs.push({ text, orig: text, fixed: false, checked: false, at: Date.now() });
+function addSeg(text, conf) {
+  /* Chrome reports 0 or nothing when it has no score; only a real, low score counts as "unsure". */
+  segs.push({ text, orig: text, fixed: false, checked: false, at: Date.now(), low: conf > 0 && conf < 0.55 });
   queue.add(segs.length - 1); saveSoon(); renderTx();
   if (queue.size >= 3) flush(); else if (!flushTimer) flushTimer = setTimeout(flush, 6000);
 }
@@ -315,7 +334,7 @@ async function flush(force) {
   const ids = [...queue].sort((a, b) => a - b); queue.clear();
   const sent = {}; ids.forEach(i => { if (segs[i]) sent[i] = segs[i].text; });
   const before = segs.slice(Math.max(0, ids[0] - 6), ids[0]).map(s => s.text);
-  const prompt = `Lesson topic: ${course() || '(not given)'}\n\nEarlier lines (context only, do not return them):\n${before.join('\n')}\n\nLines to check:\n${JSON.stringify(Object.entries(sent).map(([id, text]) => ({ id: +id, text })))}`;
+  const prompt = `Lesson topic: ${course() || '(not given)'}\n\nEarlier lines (context only, do not return them):\n${before.join('\n')}\n\nLines to check:\n${JSON.stringify(Object.entries(sent).map(([id, text]) => (segs[id] && segs[id].low ? { id: +id, text, low: true } : { id: +id, text })))}`;
   try {
     const out = jsonObject(await claude(CORRECT_PROMPT, [{ role: 'user', content: prompt }], MODEL_FAST, 1500));
     for (const fx of out.fixes || []) {
@@ -328,6 +347,55 @@ async function flush(force) {
   } catch (e) { console.warn('correction failed', e); if (/401|403/.test(e.message)) toast(e.message, 6000); }
   flushing = false;
   if (queue.size) flushTimer = setTimeout(flush, 2000);
+}
+
+/* ───────── Final pass: when recording stops, the whole lesson is cleaned up once, in place ───────── */
+let finalRunning = null;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* Applies edits [{ids, text}] to lines still unchanged since they were sent; an edit that would lose a number, a
+   caps term or a variable, that grows the text, or that skips over a visible line is dropped. Returns how many applied. */
+function applyEdits(edits, sent) {
+  let applied = 0;
+  for (const e of edits) {
+    const ids = (Array.isArray(e.ids) ? e.ids : []).map(Number);
+    if (!ids.length || ids.some((i, k) => !(i in sent) || (k && i <= ids[k - 1]))) continue;
+    if (ids.some(i => !segs[i] || segs[i].text !== sent[i])) continue;
+    let gap = false; for (let k = 1; k < ids.length; k++) for (let j = ids[k - 1] + 1; j < ids[k]; j++) if (segs[j] && segs[j].text) gap = true;
+    if (gap) continue;
+    const total = ids.map(i => sent[i]).join(' '), t = String(e.text == null ? '' : e.text).trim();
+    if (t === total || t.length > total.length * 1.2 + 15 || (t !== '' && t.length < total.length * 0.25) || !keepsKeyTokens(total, t)) continue;
+    const first = segs[ids[0]];
+    first.orig = ids.map(i => segs[i].orig || sent[i]).join(' '); first.text = t; first.fixed = true;
+    ids.slice(1).forEach(i => { segs[i].text = ''; segs[i].fixed = true; });
+    fixCount++; applied++;
+  }
+  return applied;
+}
+function finalPass() {
+  if (finalRunning) return finalRunning;
+  const run = (async () => {
+    if (!canCall()) return;
+    for (let k = 0; k < 40 && (flushing || queue.size); k++) { if (!flushing && queue.size) flush(); await sleep(500); }
+    const todo = segs.map((_, i) => i).filter(i => segs[i].text && !segs[i].final);
+    if (!todo.length) return;
+    $('stFix').textContent = '整理全文中…';
+    let changed = 0, failed = false;
+    for (let at = 0; at < todo.length; at += 100) {
+      const ids = todo.slice(at, at + 100), sent = {}; ids.forEach(i => { sent[i] = segs[i].text; });
+      const before = segs.slice(Math.max(0, ids[0] - 8), ids[0]).filter(x => x.text).map(x => x.text).join('\n');
+      const lines = ids.map(i => `[${i}] ${segs[i].text}${segs[i].low ? ' (low confidence)' : ''}`).join('\n');
+      const prompt = `Lesson topic: ${course() || '(not given)'}\n\nEarlier lines (context only, do not return them):\n${before}\n\nLines to edit:\n${lines}`;
+      try {
+        const out = jsonObject(await claude(FINAL_PROMPT, [{ role: 'user', content: prompt }], MODEL_MAIN, 4000));
+        changed += applyEdits(out.edits || [], sent);
+        ids.forEach(i => { if (segs[i]) segs[i].final = true; });
+      } catch (err) { failed = true; console.warn('final pass failed', err); }
+    }
+    $('stFix').textContent = `修正 ${fixCount} 處`; renderTx(); saveSoon();
+    toast(failed ? '全文整理沒有完全完成，稍後再按停止錄音可重試' : changed ? `已整理全文（${changed} 處）` : '全文整理完成', 4000);
+  })();
+  finalRunning = run; run.finally(() => { if (finalRunning === run) finalRunning = null; });
+  return run;
 }
 
 /* ───────── Slides ───────── */
@@ -477,6 +545,7 @@ function md(src) {
   if (list) out.push('</ul>'); return out.join('');
 }
 async function summarize() {
+  if (finalRunning) { $('sumBody').innerHTML = '<div class="hint">等待全文整理完成…</div>'; await finalRunning; }
   const text = segs.filter(s => s.text).map(stamp).join('\n');
   if (text.split(/\s+/).length < 20) { toast('逐字稿太短，還不能總結'); return; }
   $('sumBtn').disabled = true; $('sumBody').innerHTML = '<div class="hint">整理中…</div>';
