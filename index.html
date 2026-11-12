@@ -418,24 +418,43 @@ async function claudeRaw(body) {
   if (!r.ok) { let m = ''; const raw = await r.text(); try { m = JSON.parse(raw).error.message; } catch { m = raw.slice(0, 200); } throw new Error(`Claude API ${r.status}${m ? '：' + m : ''}${/CORS/i.test(m) ? '\n→ 你的組織不允許瀏覽器直連，請改用「中繼站網址」（見連線設定）。' : ''}`); }
   return r;
 }
+/* Errors that usually pass on their own (Claude busy, rate limit, a dropped connection) are retried up to twice. */
+const transient = e => /overloaded|rate_limit|api_error|timed out|timeout|Failed to fetch|Load failed|NetworkError|network error|\b(429|502|503|504|529)\b/i.test(String(e && e.message));
+async function withRetry(fn) {
+  for (let i = 0; ; i++) {
+    try { return await fn(); }
+    catch (e) { if (i >= 2 || e.partial || !transient(e)) throw e; await sleep(1500 * (i + 1)); }
+  }
+}
+/* The relay starts its answer before Claude has replied, so a failure arrives inside the body: {"type":"error","error":{...}}. */
+const apiError = ev => new Error(`Claude API ${(ev.error && ev.error.type) || 'error'}：${(ev.error && ev.error.message) || '未知錯誤'}`);
 async function claude(system, messages, model, max) {
-  const j = await (await claudeRaw({ model, max_tokens: max, system: systemBlocks(system), messages })).json();
-  return (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+  return withRetry(async () => {
+    const j = await (await claudeRaw({ model, max_tokens: max, system: systemBlocks(system), messages })).json();
+    if (j.type === 'error' || j.error) throw apiError(j);
+    return (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+  });
 }
 async function claudeStream(system, messages, model, max, onText) {
-  const r = await claudeRaw({ model, max_tokens: max, system: systemBlocks(system), messages, stream: true });
-  const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '', text = '';
-  for (;;) {
-    const { done, value } = await reader.read(); if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let i;
-    while ((i = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-      if (!line.startsWith('data:')) continue;
-      try { const ev = JSON.parse(line.slice(5)); if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') { text += ev.delta.text; onText(text); } } catch {}
-    }
-  }
-  return text.trim();
+  return withRetry(async () => {
+    const r = await claudeRaw({ model, max_tokens: max, system: systemBlocks(system), messages, stream: true });
+    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '', text = '';
+    try {
+      for (;;) {
+        const { done, value } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          if (!line.startsWith('data:')) continue;   /* also skips the relay's ": keepalive" lines */
+          let ev; try { ev = JSON.parse(line.slice(5)); } catch { continue; }
+          if (ev.type === 'error') throw apiError(ev);
+          if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') { text += ev.delta.text; onText(text); }
+        }
+      }
+    } catch (e) { if (text) e.partial = true; throw e; }   /* once text has been shown, do not start over */
+    return text.trim();
+  });
 }
 function jsonObject(text) { const m = text.match(/\{[\s\S]*\}/); try { return m ? JSON.parse(m[0]) : {}; } catch { return {}; } }
 
